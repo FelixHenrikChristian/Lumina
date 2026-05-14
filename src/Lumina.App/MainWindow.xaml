@@ -35,29 +35,35 @@
             IsSettingsVisible="True"
             OpenPaneLength="336"
             PaneDisplayMode="Auto"
-            PaneTitle="Lumina"
             SelectionChanged="ShellNav_SelectionChanged">
 
-            <NavigationView.MenuItems>
-                <NavigationViewItem
-                    x:Name="LocationsNavItem"
-                    Content="Locations"
-                    Tag="locations">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE8B7;" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem
-                    Content="Tags"
-                    Tag="tags">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE8EC;" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-            </NavigationView.MenuItems>
-
             <NavigationView.PaneCustomContent>
-                <Frame x:Name="SidebarFrame" />
+                <Grid
+                    x:Name="SidebarPaneContent"
+                    RowSpacing="4">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <SelectorBar
+                        x:Name="SidebarSelector"
+                        Margin="12,8,12,0">
+                        <SelectorBarItem
+                            x:Name="LocationsSelectorItem"
+                            Icon="Folder"
+                            Text="Locations" />
+                        <SelectorBarItem
+                            x:Name="TagsSelectorItem"
+                            Icon="Tag"
+                            Text="Tags" />
+                    </SelectorBar>
+
+                    <Frame
+                        x:Name="SidebarFrame"
+                        Grid.Row="1"
+                        IsNavigationStackEnabled="False" />
+                </Grid>
             </NavigationView.PaneCustomContent>
 
             <NavigationView.Content>

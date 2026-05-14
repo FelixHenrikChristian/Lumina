@@ -7,6 +7,8 @@ namespace Lumina.App;
 
 public sealed partial class MainWindow : Window
 {
+    private bool _isUpdatingSidebarSelection;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -16,8 +18,60 @@ public sealed partial class MainWindow : Window
 
         AppWindow.SetIcon("Assets/AppIcon.ico");
 
-        ShellNav.SelectedItem = LocationsNavItem;
         SidebarFrame.Navigate(typeof(LocationSidebarView));
+        LocationsSelectorItem.IsSelected = true;
+        SidebarSelector.SelectionChanged += SidebarSelector_SelectionChanged;
+        ShellNav.Loaded += (_, _) => UpdateSidebarPaneContentVisibility();
+        ShellNav.SizeChanged += (_, _) => UpdateSidebarPaneContentVisibility();
+        ShellNav.PaneOpening += (_, _) => SidebarPaneContent.Visibility = Visibility.Visible;
+        ShellNav.PaneOpened += (_, _) => UpdateSidebarPaneContentVisibility();
+        ShellNav.PaneClosing += (_, _) => SidebarPaneContent.Visibility = Visibility.Collapsed;
+        ShellNav.PaneClosed += (_, _) => UpdateSidebarPaneContentVisibility();
+    }
+
+    private void UpdateSidebarPaneContentVisibility()
+    {
+        SidebarPaneContent.Visibility = ShellNav.IsPaneOpen
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void ClearSidebarSelection()
+    {
+        _isUpdatingSidebarSelection = true;
+
+        try
+        {
+            LocationsSelectorItem.IsSelected = false;
+            TagsSelectorItem.IsSelected = false;
+        }
+        finally
+        {
+            _isUpdatingSidebarSelection = false;
+        }
+    }
+
+    private void SidebarSelector_SelectionChanged(
+        SelectorBar sender,
+        SelectorBarSelectionChangedEventArgs args)
+    {
+        if (_isUpdatingSidebarSelection)
+        {
+            return;
+        }
+
+        ShellNav.SelectedItem = null;
+
+        if (sender.SelectedItem == LocationsSelectorItem)
+        {
+            SidebarFrame.Navigate(typeof(LocationSidebarView));
+            return;
+        }
+
+        if (sender.SelectedItem == TagsSelectorItem)
+        {
+            SidebarFrame.Navigate(typeof(TagSidebarView));
+        }
     }
 
     private void ShellNav_SelectionChanged(
@@ -26,23 +80,8 @@ public sealed partial class MainWindow : Window
     {
         if (args.IsSettingsSelected)
         {
+            ClearSidebarSelection();
             SidebarFrame.Navigate(typeof(SettingsView));
-            return;
-        }
-
-        if (args.SelectedItem is not NavigationViewItem item)
-        {
-            return;
-        }
-
-        switch (item.Tag?.ToString())
-        {
-            case "locations":
-                SidebarFrame.Navigate(typeof(LocationSidebarView));
-                break;
-            case "tags":
-                SidebarFrame.Navigate(typeof(TagSidebarView));
-                break;
         }
     }
 }
