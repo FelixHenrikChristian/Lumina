@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="Lumina.App.Views.LocationSidebarView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Padding="16" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TextBlock
+            FontSize="20"
+            FontWeight="SemiBold"
+            Text="Locations" />
+
+        <Button
+            Grid.Row="1"
+            HorizontalAlignment="Stretch"
+            IsEnabled="False">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <SymbolIcon Symbol="Add" />
+                <TextBlock Text="Add location" />
+            </StackPanel>
+        </Button>
+
+        <InfoBar
+            Grid.Row="2"
+            IsOpen="True"
+            Message="Location persistence is scaffolded in Lumina.Core and will be wired in the next migration pass."
+            Severity="Informational"
+            Title="Ready for phase 1" />
+    </Grid>
+</Page>

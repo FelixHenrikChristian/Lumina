@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Lumina.App (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "Lumina.App (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
