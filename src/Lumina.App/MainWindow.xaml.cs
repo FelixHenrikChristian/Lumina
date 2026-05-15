@@ -34,6 +34,11 @@ public sealed partial class MainWindow : Window
         ShellNav.PaneClosed += (_, _) => UpdateSidebarPaneContentLayout();
     }
 
+    private void AppTitleBar_PaneToggleRequested(TitleBar sender, object args)
+    {
+        ShellNav.IsPaneOpen = !ShellNav.IsPaneOpen;
+    }
+
     private void UpdateSidebarPaneContentLayout()
     {
         SidebarPaneContent.Visibility = ShellNav.IsPaneOpen

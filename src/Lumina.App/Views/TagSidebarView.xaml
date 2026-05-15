@@ -114,13 +114,12 @@
             HorizontalScrollBarVisibility="Disabled"
             HorizontalScrollMode="Disabled"
             VerticalAlignment="Stretch"
-            VerticalScrollBarVisibility="Auto"
             VerticalScrollMode="Enabled"
+            VerticalScrollBarVisibility="Auto"
             Visibility="{Binding TagGroupListVisibility}">
             <ItemsControl
                 HorizontalAlignment="Stretch"
-                ItemsSource="{Binding TagGroups}"
-                Margin="0,0,8,0">
+                ItemsSource="{Binding TagGroups}">
                 <ItemsControl.ItemContainerStyle>
                     <Style TargetType="ContentPresenter">
                         <Setter Property="HorizontalAlignment" Value="Stretch" />

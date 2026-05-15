@@ -111,6 +111,8 @@
             x:Name="LocationsItemsView"
             Grid.Row="2"
             ItemsSource="{Binding Locations}"
+            ScrollViewer.VerticalScrollMode="Enabled"
+            ScrollViewer.VerticalScrollBarVisibility="Auto"
             SelectionChanged="LocationsItemsView_SelectionChanged"
             SelectionMode="Single"
             Visibility="{Binding LocationListVisibility}">
