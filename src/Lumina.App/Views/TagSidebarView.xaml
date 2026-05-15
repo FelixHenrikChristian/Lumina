@@ -55,6 +55,25 @@
                         </MenuFlyoutItem>
                         <MenuFlyoutSeparator />
                         <MenuFlyoutItem
+                            Click="ExportTagLibrary_Click"
+                            Text="Export tag library">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon
+                                    FontSize="14"
+                                    Glyph="&#xE74E;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutItem
+                            Click="ImportTagLibrary_Click"
+                            Text="Import tag library">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon
+                                    FontSize="14"
+                                    Glyph="&#xE8B5;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutItem
                             Click="ClearTags_Click"
                             IsEnabled="{Binding CanClearTags}"
                             Text="Clear tags">

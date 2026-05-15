@@ -5,9 +5,14 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.Storage.Pickers;
 using Windows.UI;
+using WinRT.Interop;
 
+using Lumina.App.Services;
 using Lumina.App.ViewModels;
+using Lumina.Core.Models;
+using Lumina.Core.Services;
 
 namespace Lumina.App.Views;
 
@@ -35,7 +40,10 @@ public sealed partial class TagSidebarView : Page
         new("Black", "#000000"),
     ];
 
+    private readonly JsonTagGroupTransferService _tagGroupTransferService = new();
+
     private bool _hasLoaded;
+    private bool _isTagLibraryTransferBusy;
 
     public TagSidebarView()
     {
@@ -43,6 +51,7 @@ public sealed partial class TagSidebarView : Page
         NavigationCacheMode = Microsoft.UI.Xaml.Navigation.NavigationCacheMode.Required;
         InitializeComponent();
         DataContext = ViewModel;
+        TagLibraryEvents.Imported += TagLibraryEvents_Imported;
     }
 
     public TagSidebarViewModel ViewModel { get; }
@@ -55,6 +64,11 @@ public sealed partial class TagSidebarView : Page
         }
 
         _hasLoaded = true;
+        await ViewModel.LoadAsync();
+    }
+
+    private async void TagLibraryEvents_Imported(object? sender, EventArgs e)
+    {
         await ViewModel.LoadAsync();
     }
 
@@ -167,6 +181,61 @@ public sealed partial class TagSidebarView : Page
             result.Description,
             result.DefaultColor,
             result.DefaultTextColor);
+    }
+
+    private async void ExportTagLibrary_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isTagLibraryTransferBusy)
+        {
+            return;
+        }
+
+        var filePath = await PickExportPathAsync();
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return;
+        }
+
+        await RunTagLibraryTransferAsync(
+            async () =>
+            {
+                await _tagGroupTransferService.ExportAsync(filePath);
+                await ShowMessageDialogAsync(
+                    "Tag library exported",
+                    $"Saved to {filePath}");
+            },
+            "Export failed");
+    }
+
+    private async void ImportTagLibrary_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isTagLibraryTransferBusy)
+        {
+            return;
+        }
+
+        var filePath = await PickImportPathAsync();
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return;
+        }
+
+        var shouldImport = await ConfirmTagLibraryImportAsync();
+        if (!shouldImport)
+        {
+            return;
+        }
+
+        await RunTagLibraryTransferAsync(
+            async () =>
+            {
+                var result = await _tagGroupTransferService.ImportAsync(filePath);
+                TagLibraryEvents.RaiseImported();
+                await ShowMessageDialogAsync(
+                    "Tag library imported",
+                    CreateImportSummary(result));
+            },
+            "Import failed");
     }
 
     private async void AddTagToGroup_Click(object sender, RoutedEventArgs e)
@@ -565,6 +634,98 @@ public sealed partial class TagSidebarView : Page
         var result = await dialog.ShowAsync();
 
         return result == ContentDialogResult.Primary;
+    }
+
+    private async Task RunTagLibraryTransferAsync(Func<Task> transfer, string failureTitle)
+    {
+        _isTagLibraryTransferBusy = true;
+
+        try
+        {
+            await transfer();
+        }
+        catch (Exception ex)
+        {
+            await ShowMessageDialogAsync(failureTitle, ex.Message);
+        }
+        finally
+        {
+            _isTagLibraryTransferBusy = false;
+        }
+    }
+
+    private async Task<string?> PickExportPathAsync()
+    {
+        var picker = new FileSavePicker
+        {
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+            SuggestedFileName = $"Lumina-tags-{DateTime.Now:yyyy-MM-dd}",
+        };
+        picker.FileTypeChoices.Add("JSON tag library", new List<string> { ".json" });
+        InitializePicker(picker);
+
+        var file = await picker.PickSaveFileAsync();
+
+        return file?.Path;
+    }
+
+    private async Task<string?> PickImportPathAsync()
+    {
+        var picker = new FileOpenPicker
+        {
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+        };
+        picker.FileTypeFilter.Add(".json");
+        InitializePicker(picker);
+
+        var file = await picker.PickSingleFileAsync();
+
+        return file?.Path;
+    }
+
+    private static void InitializePicker(object picker)
+    {
+        if (App.MainWindow is null)
+        {
+            throw new InvalidOperationException("The main window must exist before opening a file picker.");
+        }
+
+        var windowHandle = WindowNative.GetWindowHandle(App.MainWindow);
+        InitializeWithWindow.Initialize(picker, windowHandle);
+    }
+
+    private Task<bool> ConfirmTagLibraryImportAsync()
+    {
+        return ConfirmAsync(
+            "Import tag library",
+            "Importing a tag library replaces the current tag groups and tags.",
+            "Import");
+    }
+
+    private async Task ShowMessageDialogAsync(string title, string message)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = title,
+            Content = message,
+            CloseButtonText = "OK",
+        };
+
+        await dialog.ShowAsync();
+    }
+
+    private static string CreateImportSummary(TagGroupImportResult result)
+    {
+        var parts = new List<string>
+        {
+            $"Source: {result.SourceFormat}",
+            $"tags: {result.TagCount}",
+        };
+
+        parts.Add($"groups: {result.TagGroupCount}");
+
+        return string.Join(", ", parts);
     }
 
     private ComboBox CreateGroupComboBox(string? selectedGroupId)
