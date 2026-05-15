@@ -165,7 +165,8 @@
 
                                     <TextBlock
                                         VerticalAlignment="Center"
-                                        FontWeight="SemiBold"
+                                        FontSize="16"
+                                        FontWeight="Bold"
                                         Text="{Binding Name}"
                                         TextTrimming="CharacterEllipsis" />
                                 </Grid>
