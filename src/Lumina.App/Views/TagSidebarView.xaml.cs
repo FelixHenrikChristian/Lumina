@@ -1,8 +1,11 @@
+using Microsoft.UI;
+using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.UI;
 
 using Lumina.App.ViewModels;
 
@@ -351,18 +354,24 @@ public sealed partial class TagSidebarView : Page
             TextWrapping = TextWrapping.Wrap,
         };
 
-        var colorBox = CreateColorComboBox("Default tag color", initialDefaultColor);
-        var textColorBox = CreateColorComboBox("Default text color", initialDefaultTextColor);
+        var colorBox = new ColorSelector("Default tag color", initialDefaultColor, "#2196f3");
+        var textColorBox = new ColorSelector("Default text color", initialDefaultTextColor, "#ffffff");
+        var preview = new TagPreview(
+            nameBox,
+            colorBox,
+            textColorBox,
+            "Tag Preview");
 
         var content = new StackPanel
         {
             Spacing = 12,
             Children =
             {
+                preview.View,
                 nameBox,
                 descriptionBox,
-                colorBox,
-                textColorBox,
+                colorBox.View,
+                textColorBox.View,
             },
         };
 
@@ -373,7 +382,7 @@ public sealed partial class TagSidebarView : Page
             PrimaryButtonText = primaryButtonText,
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
-            Content = content,
+            Content = CreateDialogContent(content),
         };
 
         void UpdatePrimaryButtonState()
@@ -398,8 +407,8 @@ public sealed partial class TagSidebarView : Page
         return new GroupDialogResult(
             nameBox.Text.Trim(),
             descriptionBox.Text.Trim(),
-            GetSelectedColor(colorBox, "#2196f3"),
-            GetSelectedColor(textColorBox, "#ffffff"));
+            colorBox.SelectedColor,
+            textColorBox.SelectedColor);
     }
 
     private async Task<TagDialogResult?> PromptForTagAsync(
@@ -427,8 +436,13 @@ public sealed partial class TagSidebarView : Page
         var groupBox = CreateGroupComboBox(initialGroupId);
         groupBox.IsEnabled = allowGroupChange;
 
-        var colorBox = CreateColorComboBox("Tag color", initialColor);
-        var textColorBox = CreateColorComboBox("Text color", initialTextColor);
+        var colorBox = new ColorSelector("Tag color", initialColor, initialColor);
+        var textColorBox = new ColorSelector("Text color", initialTextColor, initialTextColor);
+        var preview = new TagPreview(
+            nameBox,
+            colorBox,
+            textColorBox,
+            "Tag Preview");
 
         groupBox.SelectionChanged += (_, _) =>
         {
@@ -437,8 +451,8 @@ public sealed partial class TagSidebarView : Page
                 return;
             }
 
-            SelectColor(colorBox, selectedGroup.DefaultColor);
-            SelectColor(textColorBox, selectedGroup.DefaultTextColor);
+            colorBox.SelectColor(selectedGroup.DefaultColor);
+            textColorBox.SelectColor(selectedGroup.DefaultTextColor);
         };
 
         var content = new StackPanel
@@ -446,10 +460,11 @@ public sealed partial class TagSidebarView : Page
             Spacing = 12,
             Children =
             {
+                preview.View,
                 nameBox,
                 groupBox,
-                colorBox,
-                textColorBox,
+                colorBox.View,
+                textColorBox.View,
             },
         };
 
@@ -460,7 +475,7 @@ public sealed partial class TagSidebarView : Page
             PrimaryButtonText = primaryButtonText,
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
-            Content = content,
+            Content = CreateDialogContent(content),
         };
 
         void UpdatePrimaryButtonState()
@@ -489,8 +504,23 @@ public sealed partial class TagSidebarView : Page
         return new TagDialogResult(
             group.Id,
             nameBox.Text.Trim(),
-            GetSelectedColor(colorBox, group.DefaultColor),
-            GetSelectedColor(textColorBox, group.DefaultTextColor));
+            colorBox.SelectedColor,
+            textColorBox.SelectedColor);
+    }
+
+    private static ScrollViewer CreateDialogContent(FrameworkElement content)
+    {
+        content.Width = 456;
+
+        return new ScrollViewer
+        {
+            MaxHeight = 640,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            HorizontalScrollMode = ScrollMode.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollMode = ScrollMode.Auto,
+            Content = content,
+        };
     }
 
     private async Task<bool> ConfirmAsync(
@@ -546,58 +576,6 @@ public sealed partial class TagSidebarView : Page
         return comboBox;
     }
 
-    private static ComboBox CreateColorComboBox(string header, string selectedColor)
-    {
-        var comboBox = new ComboBox
-        {
-            Header = header,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-        };
-
-        foreach (var color in PresetColors)
-        {
-            comboBox.Items.Add(new ComboBoxItem
-            {
-                Content = $"{color.Name} ({color.Hex})",
-                Tag = color.Hex,
-            });
-        }
-
-        SelectColor(comboBox, selectedColor);
-
-        return comboBox;
-    }
-
-    private static void SelectColor(ComboBox comboBox, string color)
-    {
-        var normalized = string.IsNullOrWhiteSpace(color) ? "#2196f3" : color.Trim();
-        foreach (var item in comboBox.Items.OfType<ComboBoxItem>())
-        {
-            if (item.Tag is string itemColor &&
-                string.Equals(itemColor, normalized, StringComparison.OrdinalIgnoreCase))
-            {
-                comboBox.SelectedItem = item;
-                return;
-            }
-        }
-
-        var customItem = new ComboBoxItem
-        {
-            Content = $"Custom ({normalized})",
-            Tag = normalized,
-        };
-        comboBox.Items.Add(customItem);
-        comboBox.SelectedItem = customItem;
-    }
-
-    private static string GetSelectedColor(ComboBox comboBox, string fallback)
-    {
-        return comboBox.SelectedItem is ComboBoxItem { Tag: string color } &&
-            !string.IsNullOrWhiteSpace(color)
-            ? color
-            : fallback;
-    }
-
     private static GroupChoice? GetSelectedGroup(ComboBox comboBox)
     {
         return comboBox.SelectedItem is ComboBoxItem { Tag: GroupChoice group }
@@ -640,6 +618,443 @@ public sealed partial class TagSidebarView : Page
             FrameworkElement { DataContext: TagItemViewModel tag } => tag,
             _ => null,
         };
+    }
+
+    private static bool TryParseHexColor(string? value, out Color color)
+    {
+        color = Colors.Transparent;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var hex = value.Trim();
+        if (hex[0] == '#')
+        {
+            hex = hex[1..];
+        }
+
+        if (hex.Length is not (6 or 8) ||
+            !hex.All(Uri.IsHexDigit))
+        {
+            return false;
+        }
+
+        var offset = hex.Length == 8 ? 2 : 0;
+        var red = Convert.ToByte(hex.Substring(offset, 2), 16);
+        var green = Convert.ToByte(hex.Substring(offset + 2, 2), 16);
+        var blue = Convert.ToByte(hex.Substring(offset + 4, 2), 16);
+
+        color = Color.FromArgb(byte.MaxValue, red, green, blue);
+
+        return true;
+    }
+
+    private static string NormalizeColorText(string? color, string fallback)
+    {
+        return TryParseHexColor(color, out var parsed)
+            ? ToHexColor(parsed)
+            : fallback;
+    }
+
+    private static string ToHexColor(Color color)
+    {
+        return $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+    }
+
+    private static SolidColorBrush CreateColorBrush(string color, string fallback, byte? alpha = null)
+    {
+        if (!TryParseHexColor(color, out var parsed) &&
+            !TryParseHexColor(fallback, out parsed))
+        {
+            return new SolidColorBrush(Colors.Transparent);
+        }
+
+        if (alpha is not null)
+        {
+            parsed.A = alpha.Value;
+        }
+
+        return new SolidColorBrush(parsed);
+    }
+
+    private static Border CreateSwatch(string color, double size, double cornerRadius)
+    {
+        return new Border
+        {
+            Width = size,
+            Height = size,
+            CornerRadius = new CornerRadius(cornerRadius),
+            Background = CreateColorBrush(color, "#2196F3"),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x66, 0, 0, 0)),
+            BorderThickness = new Thickness(1),
+        };
+    }
+
+    private sealed class TagPreview
+    {
+        private readonly TextBox _nameBox;
+        private readonly ColorSelector _colorSelector;
+        private readonly ColorSelector _textColorSelector;
+        private readonly string _fallbackName;
+        private readonly Border _chip;
+        private readonly TextBlock _nameText;
+        private readonly Border _panel;
+        private readonly Border _backgroundSwatch;
+        private readonly Border _textSwatch;
+
+        public TagPreview(
+            TextBox nameBox,
+            ColorSelector colorSelector,
+            ColorSelector textColorSelector,
+            string fallbackName)
+        {
+            _nameBox = nameBox;
+            _colorSelector = colorSelector;
+            _textColorSelector = textColorSelector;
+            _fallbackName = fallbackName;
+
+            _nameText = new TextBlock
+            {
+                FontWeight = FontWeights.SemiBold,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+
+            _chip = new Border
+            {
+                MinHeight = 38,
+                MaxWidth = 320,
+                Padding = new Thickness(14, 8, 14, 8),
+                CornerRadius = new CornerRadius(7),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Child = _nameText,
+            };
+
+            _backgroundSwatch = CreateSwatch(_colorSelector.SelectedColor, 18, 4);
+            _textSwatch = CreateSwatch(_textColorSelector.SelectedColor, 18, 4);
+
+            var colorSummary = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Spacing = 6,
+                Children =
+                {
+                    _backgroundSwatch,
+                    _textSwatch,
+                },
+            };
+
+            var header = new Grid
+            {
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                    new ColumnDefinition { Width = GridLength.Auto },
+                },
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = "Tag Preview",
+                        FontSize = 13,
+                        FontWeight = FontWeights.SemiBold,
+                        VerticalAlignment = VerticalAlignment.Center,
+                    },
+                    colorSummary,
+                },
+            };
+            Grid.SetColumn(colorSummary, 1);
+
+            _panel = new Border
+            {
+                MinHeight = 116,
+                Padding = new Thickness(16),
+                CornerRadius = new CornerRadius(10),
+                BorderThickness = new Thickness(1),
+                Child = new Grid
+                {
+                    RowSpacing = 18,
+                    RowDefinitions =
+                    {
+                        new RowDefinition { Height = GridLength.Auto },
+                        new RowDefinition { Height = new GridLength(1, GridUnitType.Star) },
+                    },
+                    Children =
+                    {
+                        header,
+                        _chip,
+                    },
+                },
+            };
+            Grid.SetRow(_chip, 1);
+
+            View = _panel;
+
+            _nameBox.TextChanged += (_, _) => Update();
+            _colorSelector.SelectedColorChanged += (_, _) => Update();
+            _textColorSelector.SelectedColorChanged += (_, _) => Update();
+            Update();
+        }
+
+        public FrameworkElement View { get; }
+
+        private void Update()
+        {
+            var previewName = _nameBox.Text.Trim();
+            _nameText.Text = previewName.Length == 0 ? _fallbackName : previewName;
+            _chip.Background = CreateColorBrush(_colorSelector.SelectedColor, "#2196F3");
+            _nameText.Foreground = CreateColorBrush(_textColorSelector.SelectedColor, "#FFFFFF");
+            _panel.Background = CreateColorBrush(_colorSelector.SelectedColor, "#2196F3", 0x18);
+            _panel.BorderBrush = CreateColorBrush(_colorSelector.SelectedColor, "#2196F3", 0x55);
+            _backgroundSwatch.Background = CreateColorBrush(_colorSelector.SelectedColor, "#2196F3");
+            _textSwatch.Background = CreateColorBrush(_textColorSelector.SelectedColor, "#FFFFFF");
+        }
+    }
+
+    private sealed class ColorSelector
+    {
+        private const int PresetColumnCount = 9;
+
+        private readonly string _fallbackColor;
+        private readonly List<Button> _presetButtons = [];
+        private readonly Button _pickerButton;
+        private string _selectedColor;
+
+        public ColorSelector(string header, string selectedColor, string fallbackColor)
+        {
+            _fallbackColor = NormalizeColorText(fallbackColor, "#2196F3");
+            _selectedColor = _fallbackColor;
+
+            var presetGrid = new Grid
+            {
+                ColumnSpacing = 6,
+                RowSpacing = 6,
+                HorizontalAlignment = HorizontalAlignment.Left,
+            };
+            for (var i = 0; i < PresetColumnCount; i++)
+            {
+                presetGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            }
+
+            var rowCount = (int)Math.Ceiling((double)PresetColors.Length / PresetColumnCount);
+            for (var i = 0; i < rowCount; i++)
+            {
+                presetGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            }
+
+            var colorIndex = 0;
+            foreach (var color in PresetColors)
+            {
+                var normalized = NormalizeColorText(color.Hex, _fallbackColor);
+                var colorButton = CreatePresetButton(color.Name, normalized);
+                Grid.SetColumn(colorButton, colorIndex % PresetColumnCount);
+                Grid.SetRow(colorButton, colorIndex / PresetColumnCount);
+                presetGrid.Children.Add(colorButton);
+                _presetButtons.Add(colorButton);
+                colorIndex++;
+            }
+
+            _pickerButton = new Button
+            {
+                Width = 32,
+                Height = 32,
+                Padding = new Thickness(0),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Content = new FontIcon
+                {
+                    Glyph = "\uE790",
+                    FontSize = 15,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                },
+            };
+            ToolTipService.SetToolTip(_pickerButton, "Custom color");
+            _pickerButton.Click += PickerButton_Click;
+
+            var paletteGrid = new Grid
+            {
+                ColumnSpacing = 10,
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                    new ColumnDefinition { Width = GridLength.Auto },
+                },
+                Children =
+                {
+                    presetGrid,
+                    _pickerButton,
+                },
+            };
+            Grid.SetColumn(_pickerButton, 1);
+
+            View = new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = header,
+                        FontSize = 13,
+                        FontWeight = FontWeights.SemiBold,
+                    },
+                    paletteGrid,
+                },
+            };
+
+            SelectColor(selectedColor);
+        }
+
+        public FrameworkElement View { get; }
+
+        public event EventHandler? SelectedColorChanged;
+
+        public string SelectedColor => _selectedColor;
+
+        public void SelectColor(string color)
+        {
+            var previous = _selectedColor;
+            var normalized = NormalizeColorText(color, _fallbackColor);
+            _selectedColor = normalized;
+            UpdatePresetButtonStates();
+            RaiseSelectedColorChanged(previous, normalized);
+        }
+
+        private Button CreatePresetButton(string name, string color)
+        {
+            var button = new Button
+            {
+                Width = 32,
+                Height = 32,
+                Padding = new Thickness(0),
+                Tag = color,
+                Content = CreateSwatch(color, 18, 4),
+            };
+            ToolTipService.SetToolTip(button, $"{name} {color}");
+            button.Click += (_, _) => SelectColor(color);
+
+            return button;
+        }
+
+        private void PickerButton_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedColor = TryParseHexColor(SelectedColor, out var parsedColor)
+                ? parsedColor
+                : Color.FromArgb(byte.MaxValue, 0x21, 0x96, 0xF3);
+
+            var picker = new ColorPicker
+            {
+                Color = selectedColor,
+                ColorSpectrumShape = ColorSpectrumShape.Box,
+                IsMoreButtonVisible = true,
+                IsColorSliderVisible = true,
+                IsColorChannelTextInputVisible = true,
+                IsHexInputVisible = true,
+                IsAlphaEnabled = false,
+                IsAlphaSliderVisible = false,
+                IsAlphaTextInputVisible = false,
+            };
+
+            var valueText = new TextBlock
+            {
+                Text = ToHexColor(selectedColor),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            var preview = new Border
+            {
+                Width = 24,
+                Height = 24,
+                CornerRadius = new CornerRadius(5),
+                Background = new SolidColorBrush(selectedColor),
+                BorderBrush = new SolidColorBrush(Color.FromArgb(0x66, 0, 0, 0)),
+                BorderThickness = new Thickness(1),
+            };
+            var doneButton = new Button
+            {
+                Content = "Done",
+                MinWidth = 72,
+                HorizontalAlignment = HorizontalAlignment.Right,
+            };
+
+            var footer = new Grid
+            {
+                ColumnSpacing = 8,
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition { Width = GridLength.Auto },
+                    new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                    new ColumnDefinition { Width = GridLength.Auto },
+                },
+                Children =
+                {
+                    preview,
+                    valueText,
+                    doneButton,
+                },
+            };
+            Grid.SetColumn(valueText, 1);
+            Grid.SetColumn(doneButton, 2);
+
+            var flyout = new Flyout
+            {
+                Placement = FlyoutPlacementMode.BottomEdgeAlignedRight,
+                Content = new StackPanel
+                {
+                    Width = 328,
+                    Spacing = 10,
+                    Children =
+                    {
+                        picker,
+                        footer,
+                    },
+                },
+            };
+
+            picker.ColorChanged += (_, args) =>
+            {
+                var hex = ToHexColor(args.NewColor);
+                SelectColor(hex);
+                valueText.Text = hex;
+                preview.Background = new SolidColorBrush(args.NewColor);
+            };
+            doneButton.Click += (_, _) => flyout.Hide();
+
+            flyout.ShowAt(_pickerButton);
+        }
+
+        private void UpdatePresetButtonStates()
+        {
+            var matchesPreset = false;
+            foreach (var button in _presetButtons)
+            {
+                var isSelected = button.Tag is string color &&
+                    string.Equals(color, _selectedColor, StringComparison.OrdinalIgnoreCase);
+
+                matchesPreset |= isSelected;
+                ApplySelectionVisual(button, isSelected);
+            }
+
+            ApplySelectionVisual(_pickerButton, !matchesPreset);
+        }
+
+        private static void ApplySelectionVisual(Button button, bool isSelected)
+        {
+            button.BorderBrush = new SolidColorBrush(isSelected
+                ? Color.FromArgb(0xFF, 0x00, 0x78, 0xD4)
+                : Color.FromArgb(0x00, 0, 0, 0));
+            button.BorderThickness = new Thickness(isSelected ? 2 : 1);
+        }
+
+        private void RaiseSelectedColorChanged(string previousColor, string currentColor)
+        {
+            if (!string.Equals(previousColor, currentColor, StringComparison.OrdinalIgnoreCase))
+            {
+                SelectedColorChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
     }
 
     private sealed record ColorChoice(string Name, string Hex);
