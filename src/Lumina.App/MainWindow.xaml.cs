@@ -1,12 +1,16 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
+using Windows.Foundation;
+
 using Lumina.App.Views;
 
 namespace Lumina.App;
 
 public sealed partial class MainWindow : Window
 {
+    private const double SidebarSettingsItemReservedHeight = 56;
+
     private bool _isUpdatingSidebarSelection;
 
     public MainWindow()
@@ -21,19 +25,38 @@ public sealed partial class MainWindow : Window
         SidebarFrame.Navigate(typeof(LocationSidebarView));
         LocationsSelectorItem.IsSelected = true;
         SidebarSelector.SelectionChanged += SidebarSelector_SelectionChanged;
-        ShellNav.Loaded += (_, _) => UpdateSidebarPaneContentVisibility();
-        ShellNav.SizeChanged += (_, _) => UpdateSidebarPaneContentVisibility();
+        SidebarSelector.SizeChanged += (_, _) => UpdateSidebarPaneContentLayout();
+        ShellNav.Loaded += (_, _) => UpdateSidebarPaneContentLayout();
+        ShellNav.SizeChanged += (_, _) => UpdateSidebarPaneContentLayout();
         ShellNav.PaneOpening += (_, _) => SidebarPaneContent.Visibility = Visibility.Visible;
-        ShellNav.PaneOpened += (_, _) => UpdateSidebarPaneContentVisibility();
+        ShellNav.PaneOpened += (_, _) => UpdateSidebarPaneContentLayout();
         ShellNav.PaneClosing += (_, _) => SidebarPaneContent.Visibility = Visibility.Collapsed;
-        ShellNav.PaneClosed += (_, _) => UpdateSidebarPaneContentVisibility();
+        ShellNav.PaneClosed += (_, _) => UpdateSidebarPaneContentLayout();
     }
 
-    private void UpdateSidebarPaneContentVisibility()
+    private void UpdateSidebarPaneContentLayout()
     {
         SidebarPaneContent.Visibility = ShellNav.IsPaneOpen
             ? Visibility.Visible
             : Visibility.Collapsed;
+
+        if (SidebarFrame.XamlRoot is null || ShellNav.ActualHeight <= 0)
+        {
+            SidebarFrame.ClearValue(FrameworkElement.MaxHeightProperty);
+            return;
+        }
+
+        var frameTop = SidebarFrame
+            .TransformToVisual(ShellNav)
+            .TransformPoint(new Point(0, 0))
+            .Y;
+        var reservedFooterHeight = ShellNav.IsSettingsVisible
+            ? SidebarSettingsItemReservedHeight
+            : 0;
+
+        SidebarFrame.MaxHeight = Math.Max(
+            0,
+            ShellNav.ActualHeight - frameTop - reservedFooterHeight);
     }
 
     private void ClearSidebarSelection()
