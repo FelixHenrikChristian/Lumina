@@ -5,9 +5,27 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Loaded="Page_Loaded"
     mc:Ignorable="d">
 
-    <Grid Padding="16" RowSpacing="12">
+    <Grid
+        x:Name="RootGrid"
+        Padding="16"
+        Background="Transparent"
+        RightTapped="RootGrid_RightTapped"
+        RowSpacing="12">
+        <Grid.Resources>
+            <MenuFlyout x:Key="BlankAreaMenuFlyout">
+                <MenuFlyoutItem
+                    Click="AddLocation_Click"
+                    Text="Add location">
+                    <MenuFlyoutItem.Icon>
+                        <SymbolIcon Symbol="Add" />
+                    </MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+            </MenuFlyout>
+        </Grid.Resources>
+
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -19,21 +37,148 @@
             FontWeight="SemiBold"
             Text="Locations" />
 
-        <Button
-            Grid.Row="1"
-            HorizontalAlignment="Stretch"
-            IsEnabled="False">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <SymbolIcon Symbol="Add" />
-                <TextBlock Text="Add location" />
-            </StackPanel>
-        </Button>
-
         <InfoBar
+            Grid.Row="1"
+            IsOpen="{Binding HasError}"
+            Message="{Binding ErrorMessage}"
+            Severity="Error"
+            Title="Location error"
+            Visibility="{Binding ErrorVisibility}" />
+
+        <StackPanel
             Grid.Row="2"
-            IsOpen="True"
-            Message="Location persistence is scaffolded in Lumina.Core and will be wired in the next migration pass."
-            Severity="Informational"
-            Title="Ready for phase 1" />
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Spacing="12"
+            Visibility="{Binding BusyVisibility}">
+            <ProgressRing
+                Width="32"
+                Height="32"
+                IsActive="{Binding IsBusy}" />
+            <TextBlock
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="Loading locations..." />
+        </StackPanel>
+
+        <StackPanel
+            Grid.Row="2"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Spacing="12"
+            Visibility="{Binding EmptyStateVisibility}">
+            <SymbolIcon Symbol="Folder" />
+            <TextBlock
+                FontSize="16"
+                FontWeight="SemiBold"
+                Text="No locations yet" />
+            <TextBlock
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="Managed folders will appear here." />
+        </StackPanel>
+
+        <ItemsView
+            x:Name="LocationsItemsView"
+            Grid.Row="2"
+            ItemsSource="{Binding Locations}"
+            SelectionChanged="LocationsItemsView_SelectionChanged"
+            SelectionMode="Single"
+            Visibility="{Binding LocationListVisibility}">
+            <ItemsView.Layout>
+                <StackLayout
+                    Orientation="Vertical"
+                    Spacing="8" />
+            </ItemsView.Layout>
+            <ItemsView.ItemTemplate>
+                <DataTemplate>
+                    <ItemContainer
+                        x:Name="LocationCard"
+                        HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="{Binding Name}">
+                        <Border
+                            Padding="12"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6">
+                            <Grid RowSpacing="10">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <SymbolIcon
+                                        VerticalAlignment="Center"
+                                        Symbol="Folder" />
+
+                                    <StackPanel
+                                        Grid.Column="1"
+                                        MinWidth="0"
+                                        Spacing="2">
+                                        <TextBlock
+                                            FontWeight="SemiBold"
+                                            Text="{Binding Name}"
+                                            TextTrimming="CharacterEllipsis" />
+                                        <TextBlock
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="{Binding Path=Path}"
+                                            TextTrimming="CharacterEllipsis"
+                                            ToolTipService.ToolTip="{Binding Path=Path}" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <Grid Grid.Row="1">
+                                    <StackPanel
+                                        HorizontalAlignment="Left"
+                                        Orientation="Horizontal"
+                                        Spacing="4">
+                                        <Button
+                                            Width="34"
+                                            Height="30"
+                                            Padding="0"
+                                            Click="EditLocation_Click"
+                                            CommandParameter="{Binding}"
+                                            ToolTipService.ToolTip="Edit location">
+                                            <FontIcon
+                                                FontSize="14"
+                                                Glyph="&#xE70F;" />
+                                        </Button>
+                                    <Button
+                                        Width="34"
+                                        Height="30"
+                                        Padding="0"
+                                            Click="DeleteLocation_Click"
+                                        CommandParameter="{Binding}"
+                                            ToolTipService.ToolTip="Delete location">
+                                        <FontIcon
+                                            FontSize="14"
+                                                Glyph="&#xE74D;" />
+                                    </Button>
+                                    </StackPanel>
+
+                                    <Button
+                                        Width="34"
+                                        Height="30"
+                                        Padding="0"
+                                        HorizontalAlignment="Right"
+                                        Click="OpenLocation_Click"
+                                        CommandParameter="{Binding}"
+                                        ToolTipService.ToolTip="Open in File Explorer">
+                                        <FontIcon
+                                            FontSize="14"
+                                            Glyph="&#xE838;" />
+                                    </Button>
+                                </Grid>
+                            </Grid>
+                        </Border>
+                    </ItemContainer>
+                </DataTemplate>
+            </ItemsView.ItemTemplate>
+        </ItemsView>
     </Grid>
 </Page>
