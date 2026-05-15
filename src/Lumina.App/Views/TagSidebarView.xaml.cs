@@ -242,6 +242,25 @@ public sealed partial class TagSidebarView : Page
         await ViewModel.DeleteGroupAsync(group.Id);
     }
 
+    private async void ClearTags_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.CanClearTags)
+        {
+            return;
+        }
+
+        var shouldClear = await ConfirmAsync(
+            "Clear tags",
+            "Remove all tag groups and tags? Existing tags in file names will not be changed.",
+            "Clear");
+        if (!shouldClear)
+        {
+            return;
+        }
+
+        await ViewModel.ClearTagsAsync();
+    }
+
     private async void EditTag_Click(object sender, RoutedEventArgs e)
     {
         if (GetTagFromSender(sender) is not { } tag)

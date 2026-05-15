@@ -60,6 +60,15 @@
                                 <SymbolIcon Symbol="Add" />
                             </MenuFlyoutItem.Icon>
                         </MenuFlyoutItem>
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutItem
+                            Click="ClearLocations_Click"
+                            IsEnabled="{Binding CanClearLocations}"
+                            Text="Clear locations">
+                            <MenuFlyoutItem.Icon>
+                                <SymbolIcon Symbol="Delete" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
                     </MenuFlyout>
                 </Button.Flyout>
                 <FontIcon

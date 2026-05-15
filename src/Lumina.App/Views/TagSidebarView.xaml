@@ -53,6 +53,15 @@
                                 <SymbolIcon Symbol="Add" />
                             </MenuFlyoutItem.Icon>
                         </MenuFlyoutItem>
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutItem
+                            Click="ClearTags_Click"
+                            IsEnabled="{Binding CanClearTags}"
+                            Text="Clear tags">
+                            <MenuFlyoutItem.Icon>
+                                <SymbolIcon Symbol="Delete" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
                     </MenuFlyout>
                 </Button.Flyout>
                 <FontIcon
@@ -98,14 +107,6 @@
             <TextBlock
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 Text="Create a group before adding tags." />
-            <Button
-                Click="AddGroup_Click"
-                IsEnabled="{Binding CanAddGroup}">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <SymbolIcon Symbol="Add" />
-                    <TextBlock Text="Add group" />
-                </StackPanel>
-            </Button>
         </StackPanel>
 
         <ScrollViewer

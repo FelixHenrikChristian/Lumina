@@ -66,6 +66,8 @@ public sealed class LocationSidebarViewModel : ObservableObject
 
     public bool CanAddLocation => !IsBusy;
 
+    public bool CanClearLocations => !IsBusy && HasLocations;
+
     public bool HasLocations => Locations.Count > 0;
 
     public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
@@ -239,6 +241,40 @@ public sealed class LocationSidebarViewModel : ObservableObject
         await SaveSelectedLocationIdAsync(SelectedLocation?.Id, cancellationToken);
     }
 
+    public async Task ClearLocationsAsync(CancellationToken cancellationToken = default)
+    {
+        if (Locations.Count == 0)
+        {
+            return;
+        }
+
+        ErrorMessage = null;
+
+        var originalLocations = Locations.ToList();
+        var originalSelection = SelectedLocation;
+
+        Locations.Clear();
+        SelectedLocation = null;
+
+        try
+        {
+            await SaveAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            foreach (var location in originalLocations)
+            {
+                Locations.Add(location);
+            }
+
+            SelectedLocation = originalSelection;
+            ErrorMessage = $"Failed to clear locations: {ex.Message}";
+            return;
+        }
+
+        await SaveSelectedLocationIdAsync(null, cancellationToken);
+    }
+
     public static string GetDefaultLocationName(string folderPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(folderPath);
@@ -322,6 +358,7 @@ public sealed class LocationSidebarViewModel : ObservableObject
     private void OnComputedStateChanged()
     {
         OnPropertyChanged(nameof(CanAddLocation));
+        OnPropertyChanged(nameof(CanClearLocations));
         OnPropertyChanged(nameof(HasLocations));
         OnPropertyChanged(nameof(HasError));
         OnPropertyChanged(nameof(BusyVisibility));

@@ -138,6 +138,23 @@ public sealed partial class LocationSidebarView : Page
         await ViewModel.DeleteLocationAsync(location);
     }
 
+    private async void ClearLocations_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.CanClearLocations)
+        {
+            return;
+        }
+
+        var shouldClear = await ConfirmClearLocationsAsync();
+        if (!shouldClear)
+        {
+            return;
+        }
+
+        await ViewModel.ClearLocationsAsync();
+        QueueSynchronizeSelectedLocation();
+    }
+
     private async void OpenLocation_Click(object sender, RoutedEventArgs e)
     {
         if (GetLocationFromSender(sender) is not { } location)
@@ -239,6 +256,23 @@ public sealed partial class LocationSidebarView : Page
             Title = "Delete location",
             Content = $"Remove \"{location.Name}\" from Lumina? Files on disk will not be deleted.",
             PrimaryButtonText = "Delete",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+        };
+
+        var result = await dialog.ShowAsync();
+
+        return result == ContentDialogResult.Primary;
+    }
+
+    private async Task<bool> ConfirmClearLocationsAsync()
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "Clear locations",
+            Content = "Remove all locations from Lumina? Files on disk will not be deleted.",
+            PrimaryButtonText = "Clear",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
         };

@@ -53,6 +53,8 @@ public sealed class TagSidebarViewModel : ObservableObject
 
     public bool CanAddGroup => !IsBusy;
 
+    public bool CanClearTags => !IsBusy && HasTagGroups;
+
     public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
 
     public bool HasTagGroups => _tagGroups.Count > 0;
@@ -294,6 +296,19 @@ public sealed class TagSidebarViewModel : ObservableObject
             cancellationToken);
     }
 
+    public async Task ClearTagsAsync(CancellationToken cancellationToken = default)
+    {
+        if (_tagGroups.Count == 0)
+        {
+            return;
+        }
+
+        await MutateAndSaveAsync(
+            groups => groups.Clear(),
+            "Failed to clear tags",
+            cancellationToken);
+    }
+
     public TagGroup? FindGroup(string groupId)
     {
         return _tagGroups.FirstOrDefault(group => group.Id == groupId);
@@ -422,6 +437,7 @@ public sealed class TagSidebarViewModel : ObservableObject
     private void OnComputedStateChanged()
     {
         OnPropertyChanged(nameof(CanAddGroup));
+        OnPropertyChanged(nameof(CanClearTags));
         OnPropertyChanged(nameof(HasError));
         OnPropertyChanged(nameof(HasTagGroups));
         OnPropertyChanged(nameof(BusyVisibility));
