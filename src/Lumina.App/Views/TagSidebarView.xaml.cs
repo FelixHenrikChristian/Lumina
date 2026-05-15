@@ -262,7 +262,7 @@ public sealed partial class TagSidebarView : Page
         await DeleteTagAsync(tag);
     }
 
-    private void TagChip_Tapped(object sender, TappedRoutedEventArgs e)
+    private void TagChip_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: TagItemViewModel tag } tagChip)
         {
@@ -287,7 +287,12 @@ public sealed partial class TagSidebarView : Page
 
         flyout.Items.Add(editItem);
         flyout.Items.Add(deleteItem);
-        flyout.ShowAt(tagChip);
+        flyout.ShowAt(
+            tagChip,
+            new FlyoutShowOptions
+            {
+                Position = e.GetPosition(tagChip),
+            });
 
         e.Handled = true;
     }
