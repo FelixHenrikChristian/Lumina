@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+
 using Microsoft.UI;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
@@ -154,6 +156,19 @@ public sealed partial class TagSidebarView : Page
         addItem.Click += AddTagToGroup_Click;
         flyout.Items.Add(addItem);
 
+        var canSortTags = group.Tags.Count > 1;
+        var reorderItem = new MenuFlyoutItem
+        {
+            Icon = new SymbolIcon(Symbol.Sort),
+            Text = "Reorder tags",
+            Tag = group,
+            IsEnabled = canSortTags,
+        };
+        reorderItem.Click += ReorderTags_Click;
+
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        flyout.Items.Add(reorderItem);
+
         return flyout;
     }
 
@@ -263,6 +278,22 @@ public sealed partial class TagSidebarView : Page
             result.Name,
             result.Color,
             result.TextColor);
+    }
+
+    private async void ReorderTags_Click(object sender, RoutedEventArgs e)
+    {
+        if (GetGroupFromSender(sender) is not { } group)
+        {
+            return;
+        }
+
+        var orderedTagIds = await PromptForTagOrderAsync(group);
+        if (orderedTagIds is null)
+        {
+            return;
+        }
+
+        await ViewModel.ReorderTagsAsync(group.Id, orderedTagIds);
     }
 
     private async void EditGroup_Click(object sender, RoutedEventArgs e)
@@ -599,6 +630,115 @@ public sealed partial class TagSidebarView : Page
             nameBox.Text.Trim(),
             colorBox.SelectedColor,
             textColorBox.SelectedColor);
+    }
+
+    private async Task<IReadOnlyList<string>?> PromptForTagOrderAsync(TagGroupItemViewModel group)
+    {
+        var tags = new ObservableCollection<TagOrderItem>(
+            group.Tags.Select(tag => new TagOrderItem(tag.Id, tag.Name)));
+        if (tags.Count < 2)
+        {
+            return null;
+        }
+
+        var listView = new ListView
+        {
+            MinHeight = 240,
+            MaxHeight = 360,
+            ItemsSource = tags,
+            SelectionMode = ListViewSelectionMode.None,
+            IsItemClickEnabled = false,
+            CanReorderItems = true,
+            CanDragItems = true,
+            AllowDrop = true,
+            ReorderMode = ListViewReorderMode.Enabled,
+        };
+
+        var sortByNameButton = new Button
+        {
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 8,
+                VerticalAlignment = VerticalAlignment.Center,
+                Children =
+                {
+                    new SymbolIcon(Symbol.Sort),
+                    new TextBlock
+                    {
+                        Text = "Sort A to Z",
+                        VerticalAlignment = VerticalAlignment.Center,
+                    },
+                },
+            },
+        };
+        ToolTipService.SetToolTip(
+            sortByNameButton,
+            "Sort tags alphabetically (you can still drag items afterward).");
+
+        sortByNameButton.Click += (_, _) =>
+        {
+            ApplyTagOrder(tags, SortTagsAlphabetically(tags));
+        };
+
+        var content = new StackPanel
+        {
+            Width = 456,
+            Spacing = 12,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text =
+                        "Drag a row to reorder (no need to select it first). Use Sort A–Z for alphabetical order, then drag to fine-tune.",
+                    TextWrapping = TextWrapping.Wrap,
+                },
+                sortByNameButton,
+                listView,
+            },
+        };
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = $"Reorder tags in {group.Name}",
+            PrimaryButtonText = "Save",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            Content = content,
+        };
+
+        dialog.Opened += (_, _) =>
+        {
+            listView.Focus(FocusState.Programmatic);
+        };
+
+        var result = await dialog.ShowAsync();
+        if (result != ContentDialogResult.Primary)
+        {
+            return null;
+        }
+
+        return tags.Select(tag => tag.Id).ToList();
+    }
+
+    private static void ApplyTagOrder(
+        ObservableCollection<TagOrderItem> tags,
+        IReadOnlyList<TagOrderItem> ordered)
+    {
+        tags.Clear();
+        foreach (var item in ordered)
+        {
+            tags.Add(item);
+        }
+    }
+
+    private static List<TagOrderItem> SortTagsAlphabetically(IReadOnlyList<TagOrderItem> tags)
+    {
+        return tags
+            .OrderBy(tag => tag.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
     }
 
     private static ScrollViewer CreateDialogContent(FrameworkElement content)
@@ -1255,6 +1395,14 @@ public sealed partial class TagSidebarView : Page
         string? Description,
         string DefaultColor,
         string DefaultTextColor);
+
+    private sealed record TagOrderItem(string Id, string Name)
+    {
+        public override string ToString()
+        {
+            return Name;
+        }
+    }
 
     private sealed record TagDialogResult(
         string GroupId,

@@ -267,6 +267,38 @@ public sealed class TagSidebarViewModel : ObservableObject
             cancellationToken);
     }
 
+    public async Task ReorderTagsAsync(
+        string groupId,
+        IReadOnlyList<string> orderedTagIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(orderedTagIds);
+
+        var index = IndexOfGroup(groupId);
+        if (index < 0)
+        {
+            return;
+        }
+
+        var group = _tagGroups[index];
+        var reorderedTags = CreateReorderedTags(group.Tags, orderedTagIds);
+        if (HasSameTagOrder(group.Tags, reorderedTags))
+        {
+            return;
+        }
+
+        await MutateAndSaveAsync(
+            groups =>
+            {
+                groups[index] = groups[index] with
+                {
+                    Tags = reorderedTags,
+                };
+            },
+            "Failed to reorder tags",
+            cancellationToken);
+    }
+
     public async Task DeleteTagAsync(
         string tagId,
         CancellationToken cancellationToken = default)
@@ -432,6 +464,46 @@ public sealed class TagSidebarViewModel : ObservableObject
         }
 
         return color.Skip(1).All(Uri.IsHexDigit);
+    }
+
+    private static IReadOnlyList<Tag> CreateReorderedTags(
+        IReadOnlyList<Tag> tags,
+        IReadOnlyList<string> orderedTagIds)
+    {
+        var reorderedTags = new List<Tag>(tags.Count);
+        var usedTagIndexes = new bool[tags.Count];
+
+        foreach (var tagId in orderedTagIds)
+        {
+            for (var i = 0; i < tags.Count; i++)
+            {
+                if (usedTagIndexes[i] || tags[i].Id != tagId)
+                {
+                    continue;
+                }
+
+                reorderedTags.Add(tags[i]);
+                usedTagIndexes[i] = true;
+                break;
+            }
+        }
+
+        for (var i = 0; i < tags.Count; i++)
+        {
+            if (!usedTagIndexes[i])
+            {
+                reorderedTags.Add(tags[i]);
+            }
+        }
+
+        return reorderedTags;
+    }
+
+    private static bool HasSameTagOrder(
+        IReadOnlyList<Tag> currentTags,
+        IReadOnlyList<Tag> reorderedTags)
+    {
+        return currentTags.Select(tag => tag.Id).SequenceEqual(reorderedTags.Select(tag => tag.Id));
     }
 
     private void OnComputedStateChanged()
