@@ -32,10 +32,41 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <TextBlock
-            FontSize="20"
-            FontWeight="SemiBold"
-            Text="Locations" />
+        <Grid ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock
+                VerticalAlignment="Center"
+                FontSize="20"
+                FontWeight="SemiBold"
+                Text="Locations" />
+
+            <Button
+                Grid.Column="1"
+                Width="34"
+                Height="30"
+                Padding="0"
+                IsEnabled="{Binding CanAddLocation}"
+                ToolTipService.ToolTip="Location actions">
+                <Button.Flyout>
+                    <MenuFlyout>
+                        <MenuFlyoutItem
+                            Click="AddLocation_Click"
+                            Text="Add location">
+                            <MenuFlyoutItem.Icon>
+                                <SymbolIcon Symbol="Add" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                    </MenuFlyout>
+                </Button.Flyout>
+                <FontIcon
+                    FontSize="14"
+                    Glyph="&#xE712;" />
+            </Button>
+        </Grid>
 
         <InfoBar
             Grid.Row="1"
