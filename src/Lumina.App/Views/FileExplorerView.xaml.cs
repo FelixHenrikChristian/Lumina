@@ -173,6 +173,14 @@ public sealed partial class FileExplorerView : UserControl
                 }
 
                 break;
+            case VirtualKey.D:
+                if (isControlDown)
+                {
+                    DeleteSelectedFiles(permanently: false);
+                    e.Handled = true;
+                }
+
+                break;
             case VirtualKey.X:
                 if (isControlDown)
                 {

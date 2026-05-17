@@ -36,6 +36,7 @@ empty grid space gives focus to the file grid.
 | Enter | Opens the selected file or folder. |
 | F2 | Renames the focused file or folder. |
 | Delete | Moves the selected files or folders to the Recycle Bin. |
+| Ctrl + D | Moves the selected files or folders to the Recycle Bin. |
 | Shift + Delete | Permanently deletes the selected files or folders after confirmation. |
 | Ctrl + C | Copies the selected files or folders. |
 | Ctrl + X | Cuts the selected files or folders. |
