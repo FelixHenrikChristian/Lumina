@@ -20,6 +20,7 @@ public sealed partial class FileExplorerView : UserControl
     private const double FileGridMinColumnSpacing = 16;
     private const double FileGridRowSpacing = 18;
     private const int KeyDownStateMask = 0x8000;
+    private static readonly TimeSpan SearchDebounceDelay = TimeSpan.FromMilliseconds(400);
 
     private enum SelectionNavigationMode
     {
@@ -39,6 +40,8 @@ public sealed partial class FileExplorerView : UserControl
         FileClipboardOperation Operation);
 
     private FileClipboardState? _fileClipboard;
+    private CancellationTokenSource? _searchDebounceCancellation;
+    private bool _isSearchTextComposing;
 
     public FileExplorerView()
     {
@@ -65,6 +68,7 @@ public sealed partial class FileExplorerView : UserControl
     {
         LocationSelectionEvents.SelectionChanged -= LocationSelectionEvents_SelectionChanged;
         Clipboard.ContentChanged -= Clipboard_ContentChanged;
+        CancelPendingSearch();
     }
 
     private void Clipboard_ContentChanged(object? sender, object e)
@@ -269,16 +273,75 @@ public sealed partial class FileExplorerView : UserControl
         }
     }
 
-    private async void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         ViewModel.SearchQuery = SearchBox.Text;
-        if (SearchBox.FocusState == FocusState.Unfocused)
+        if (SearchBox.FocusState == FocusState.Unfocused || _isSearchTextComposing)
         {
+            CancelPendingSearch();
             return;
         }
 
-        await ViewModel.SearchAsync();
-        ScrollToTop();
+        ScheduleSearch();
+    }
+
+    private void SearchBox_TextCompositionStarted(
+        TextBox sender,
+        TextCompositionStartedEventArgs args)
+    {
+        _isSearchTextComposing = true;
+        CancelPendingSearch();
+    }
+
+    private void SearchBox_TextCompositionEnded(
+        TextBox sender,
+        TextCompositionEndedEventArgs args)
+    {
+        _isSearchTextComposing = false;
+        ViewModel.SearchQuery = SearchBox.Text;
+
+        if (SearchBox.FocusState != FocusState.Unfocused)
+        {
+            ScheduleSearch();
+        }
+    }
+
+    private void ScheduleSearch()
+    {
+        CancelPendingSearch();
+
+        var searchCancellation = new CancellationTokenSource();
+        _searchDebounceCancellation = searchCancellation;
+        _ = RunSearchAfterDelayAsync(searchCancellation);
+    }
+
+    private void CancelPendingSearch()
+    {
+        _searchDebounceCancellation?.Cancel();
+        _searchDebounceCancellation = null;
+    }
+
+    private async Task RunSearchAfterDelayAsync(CancellationTokenSource searchCancellation)
+    {
+        try
+        {
+            await Task.Delay(SearchDebounceDelay, searchCancellation.Token);
+            await ViewModel.SearchAsync(searchCancellation.Token);
+            searchCancellation.Token.ThrowIfCancellationRequested();
+            ScrollToTop();
+        }
+        catch (OperationCanceledException) when (searchCancellation.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            if (_searchDebounceCancellation == searchCancellation)
+            {
+                _searchDebounceCancellation = null;
+            }
+
+            searchCancellation.Dispose();
+        }
     }
 
     private async Task OpenFileAsync(FileExplorerItemViewModel file)

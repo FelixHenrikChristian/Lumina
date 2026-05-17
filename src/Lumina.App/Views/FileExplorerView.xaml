@@ -28,6 +28,8 @@
                 IsEnabled="{Binding CanSearch}"
                 PlaceholderText="Search current folder"
                 Text="{Binding SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                TextCompositionEnded="SearchBox_TextCompositionEnded"
+                TextCompositionStarted="SearchBox_TextCompositionStarted"
                 TextChanged="SearchBox_TextChanged" />
 
             <CommandBar
