@@ -15,6 +15,8 @@ public sealed class FileExplorerViewModel : ObservableObject
     private const int DefaultZoomLevelIndex = 2;
 
     private readonly IFileBrowserService _fileBrowserService;
+    private readonly List<string> _backStack = [];
+    private readonly List<string> _forwardStack = [];
 
     private string _currentPath = string.Empty;
     private string _currentLocationName = string.Empty;
@@ -26,6 +28,7 @@ public sealed class FileExplorerViewModel : ObservableObject
     private Location? _currentLocation;
     private CancellationTokenSource? _loadCancellation;
     private FileExplorerItemViewModel? _selectedFile;
+    private FileExplorerItemViewModel? _selectionAnchor;
     private int _zoomLevelIndex = DefaultZoomLevelIndex;
 
     public FileExplorerViewModel()
@@ -89,6 +92,12 @@ public sealed class FileExplorerViewModel : ObservableObject
 
     public bool CanRefresh => !IsBusy && !string.IsNullOrWhiteSpace(CurrentPath);
 
+    public bool CanNavigateBack => _backStack.Count > 0;
+
+    public bool CanNavigateForward => _forwardStack.Count > 0;
+
+    public bool CanNavigateToParent => !string.IsNullOrWhiteSpace(GetParentDirectoryPath(CurrentPath));
+
     public bool HasFiles => Files.Count > 0;
 
     public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
@@ -121,7 +130,9 @@ public sealed class FileExplorerViewModel : ObservableObject
         _currentLocation = location;
         CurrentLocationName = location?.Name ?? string.Empty;
         CurrentPath = location?.Path ?? string.Empty;
-        SelectedFile = null;
+        _backStack.Clear();
+        _forwardStack.Clear();
+        ClearSelection();
         Files.Clear();
         ErrorMessage = null;
         OnComputedStateChanged();
@@ -162,27 +173,96 @@ public sealed class FileExplorerViewModel : ObservableObject
     public FileExplorerItemViewModel? SelectedFile
     {
         get => _selectedFile;
-        private set => SetProperty(ref _selectedFile, value);
+        private set
+        {
+            if (ReferenceEquals(_selectedFile, value))
+            {
+                return;
+            }
+
+            if (_selectedFile is not null)
+            {
+                _selectedFile.IsFocused = false;
+            }
+
+            _selectedFile = value;
+
+            if (_selectedFile is not null)
+            {
+                _selectedFile.IsFocused = true;
+            }
+
+            OnPropertyChanged();
+        }
     }
 
     public void SelectFile(FileExplorerItemViewModel? file)
     {
-        if (ReferenceEquals(SelectedFile, file))
+        ClearSelectedFiles();
+        SelectedFile = file;
+        _selectionAnchor = file;
+
+        if (file is not null)
+        {
+            file.IsSelected = true;
+        }
+    }
+
+    public void FocusFile(FileExplorerItemViewModel? file)
+    {
+        SelectedFile = file;
+    }
+
+    public void ToggleFileSelection(FileExplorerItemViewModel file)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+
+        SelectedFile = file;
+        file.IsSelected = !file.IsSelected;
+        _selectionAnchor = file;
+    }
+
+    public void ExtendSelectionTo(FileExplorerItemViewModel file)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+
+        var anchor = _selectionAnchor ?? SelectedFile ?? file;
+        var anchorIndex = Files.IndexOf(anchor);
+        var targetIndex = Files.IndexOf(file);
+
+        if (anchorIndex < 0 || targetIndex < 0)
+        {
+            SelectFile(file);
+            return;
+        }
+
+        ClearSelectedFiles();
+        SelectedFile = file;
+        _selectionAnchor = anchor;
+
+        var start = Math.Min(anchorIndex, targetIndex);
+        var end = Math.Max(anchorIndex, targetIndex);
+
+        for (var index = start; index <= end; index++)
+        {
+            Files[index].IsSelected = true;
+        }
+    }
+
+    public void SelectAllFiles()
+    {
+        if (Files.Count == 0)
         {
             return;
         }
 
-        if (SelectedFile is not null)
+        foreach (var file in Files)
         {
-            SelectedFile.IsSelected = false;
+            file.IsSelected = true;
         }
 
-        SelectedFile = file;
-
-        if (SelectedFile is not null)
-        {
-            SelectedFile.IsSelected = true;
-        }
+        _selectionAnchor ??= Files[0];
+        SelectedFile ??= Files[0];
     }
 
     public async Task OpenDirectoryAsync(
@@ -191,9 +271,69 @@ public sealed class FileExplorerViewModel : ObservableObject
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(directoryPath);
 
-        CurrentPath = directoryPath.Trim();
-        SelectedFile = null;
+        var targetPath = NormalizeDirectoryPath(directoryPath);
+        if (IsSameDirectory(CurrentPath, targetPath))
+        {
+            await RefreshAsync(cancellationToken);
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(CurrentPath))
+        {
+            _backStack.Add(CurrentPath);
+        }
+
+        _forwardStack.Clear();
+        CurrentPath = targetPath;
+        ClearSelection();
         await LoadCurrentDirectoryAsync(cancellationToken);
+    }
+
+    public async Task NavigateBackAsync(CancellationToken cancellationToken = default)
+    {
+        if (_backStack.Count == 0)
+        {
+            return;
+        }
+
+        var targetPath = PopLast(_backStack);
+        if (!string.IsNullOrWhiteSpace(CurrentPath))
+        {
+            _forwardStack.Add(CurrentPath);
+        }
+
+        CurrentPath = targetPath;
+        ClearSelection();
+        await LoadCurrentDirectoryAsync(cancellationToken);
+    }
+
+    public async Task NavigateForwardAsync(CancellationToken cancellationToken = default)
+    {
+        if (_forwardStack.Count == 0)
+        {
+            return;
+        }
+
+        var targetPath = PopLast(_forwardStack);
+        if (!string.IsNullOrWhiteSpace(CurrentPath))
+        {
+            _backStack.Add(CurrentPath);
+        }
+
+        CurrentPath = targetPath;
+        ClearSelection();
+        await LoadCurrentDirectoryAsync(cancellationToken);
+    }
+
+    public async Task NavigateToParentAsync(CancellationToken cancellationToken = default)
+    {
+        var parentPath = GetParentDirectoryPath(CurrentPath);
+        if (string.IsNullOrWhiteSpace(parentPath))
+        {
+            return;
+        }
+
+        await OpenDirectoryAsync(parentPath, cancellationToken);
     }
 
     public void ZoomByWheelDelta(int wheelDelta)
@@ -240,7 +380,7 @@ public sealed class FileExplorerViewModel : ObservableObject
 
         IsBusy = true;
         ErrorMessage = null;
-        SelectFile(null);
+        ClearSelection();
         Files.Clear();
         OnComputedStateChanged();
 
@@ -294,6 +434,21 @@ public sealed class FileExplorerViewModel : ObservableObject
         OnPropertyChanged(nameof(NoLocationVisibility));
     }
 
+    private void ClearSelection()
+    {
+        ClearSelectedFiles();
+        SelectedFile = null;
+        _selectionAnchor = null;
+    }
+
+    private void ClearSelectedFiles()
+    {
+        foreach (var file in Files)
+        {
+            file.IsSelected = false;
+        }
+    }
+
     private static double CalculateCardHeight(double cardWidth)
     {
         return Math.Round((cardWidth * 9 / 16) + InfoPanelHeight);
@@ -303,12 +458,57 @@ public sealed class FileExplorerViewModel : ObservableObject
     {
         return Math.Clamp(Math.Round(cardWidth * 0.22), 40, 78);
     }
+
+    private static string NormalizeDirectoryPath(string directoryPath)
+    {
+        return Path.GetFullPath(directoryPath.Trim());
+    }
+
+    private static bool IsSameDirectory(string left, string right)
+    {
+        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
+        {
+            return false;
+        }
+
+        return string.Equals(
+            NormalizeDirectoryPath(left),
+            NormalizeDirectoryPath(right),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? GetParentDirectoryPath(string directoryPath)
+    {
+        if (string.IsNullOrWhiteSpace(directoryPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            return Directory.GetParent(directoryPath)?.FullName;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private static string PopLast(List<string> paths)
+    {
+        var lastIndex = paths.Count - 1;
+        var path = paths[lastIndex];
+        paths.RemoveAt(lastIndex);
+
+        return path;
+    }
 }
 
 public sealed class FileExplorerItemViewModel : ObservableObject
 {
     private double _cardHeight;
     private double _cardWidth;
+    private bool _isFocused;
     private bool _isSelected;
     private double _thumbnailIconFontSize;
 
@@ -352,11 +552,28 @@ public sealed class FileExplorerItemViewModel : ObservableObject
             if (SetProperty(ref _isSelected, value))
             {
                 OnPropertyChanged(nameof(SelectionVisibility));
+                OnPropertyChanged(nameof(FocusVisibility));
+            }
+        }
+    }
+
+    public bool IsFocused
+    {
+        get => _isFocused;
+        set
+        {
+            if (SetProperty(ref _isFocused, value))
+            {
+                OnPropertyChanged(nameof(FocusVisibility));
             }
         }
     }
 
     public Visibility SelectionVisibility => IsSelected
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public Visibility FocusVisibility => IsFocused && !IsSelected
         ? Visibility.Visible
         : Visibility.Collapsed;
 

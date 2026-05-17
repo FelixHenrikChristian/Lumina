@@ -7,6 +7,7 @@ Lumina is the WinUI 3 migration target for TagAnything. The first scaffold keeps
 - `src/Lumina.App`: WinUI 3 packaged desktop app and XAML views.
 - `src/Lumina.Core`: UI-independent models and services.
 - `tests/Lumina.Core.Tests`: unit tests for migration-safe core logic.
+- `docs/file-explorer-input.md`: file explorer mouse and keyboard input reference.
 
 ## Current Scope
 

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -15,6 +16,14 @@ public sealed partial class FileExplorerView : UserControl
 {
     private const double FileGridMinColumnSpacing = 16;
     private const double FileGridRowSpacing = 18;
+    private const int KeyDownStateMask = 0x8000;
+
+    private enum SelectionNavigationMode
+    {
+        Select,
+        Extend,
+        Focus,
+    }
 
     public FileExplorerView()
     {
@@ -58,7 +67,19 @@ public sealed partial class FileExplorerView : UserControl
             return;
         }
 
-        ViewModel.SelectFile(file);
+        if (e.KeyModifiers.HasFlag(VirtualKeyModifiers.Shift))
+        {
+            ViewModel.ExtendSelectionTo(file);
+        }
+        else if (e.KeyModifiers.HasFlag(VirtualKeyModifiers.Control))
+        {
+            ViewModel.ToggleFileSelection(file);
+        }
+        else
+        {
+            ViewModel.SelectFile(file);
+        }
+
         FileGridScrollViewer.Focus(FocusState.Pointer);
     }
 
@@ -76,35 +97,75 @@ public sealed partial class FileExplorerView : UserControl
 
     private void FileGridScrollViewer_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        var isAltDown = e.KeyStatus.IsMenuKeyDown || IsKeyDown(VirtualKey.Menu);
+        var isControlDown = IsKeyDown(VirtualKey.Control);
+        var isShiftDown = IsKeyDown(VirtualKey.Shift);
+        var selectionMode = ResolveSelectionNavigationMode(isShiftDown, isControlDown);
+
+        if (isAltDown)
+        {
+            switch (e.Key)
+            {
+                case VirtualKey.Up:
+                    NavigateToParentDirectory();
+                    e.Handled = true;
+                    return;
+                case VirtualKey.Left:
+                    NavigateBack();
+                    e.Handled = true;
+                    return;
+                case VirtualKey.Right:
+                    NavigateForward();
+                    e.Handled = true;
+                    return;
+            }
+        }
+
         switch (e.Key)
         {
+            case VirtualKey.A:
+                if (isControlDown)
+                {
+                    ViewModel.SelectAllFiles();
+                    e.Handled = true;
+                }
+
+                break;
             case VirtualKey.Left:
-                MoveSelectionBy(-1);
+                MoveSelectionBy(-1, selectionMode);
                 e.Handled = true;
                 break;
             case VirtualKey.Right:
-                MoveSelectionBy(1);
+                MoveSelectionBy(1, selectionMode);
                 e.Handled = true;
                 break;
             case VirtualKey.Up:
-                MoveSelectionBy(-GetFileGridColumnCount());
+                MoveSelectionBy(-GetFileGridColumnCount(), selectionMode);
                 e.Handled = true;
                 break;
             case VirtualKey.Down:
-                MoveSelectionBy(GetFileGridColumnCount());
+                MoveSelectionBy(GetFileGridColumnCount(), selectionMode);
                 e.Handled = true;
                 break;
             case VirtualKey.Home:
-                SelectFileAt(0);
+                SelectFileAt(0, selectionMode);
                 e.Handled = true;
                 break;
             case VirtualKey.End:
-                SelectFileAt(ViewModel.Files.Count - 1);
+                SelectFileAt(ViewModel.Files.Count - 1, selectionMode);
                 e.Handled = true;
                 break;
             case VirtualKey.Enter:
                 OpenSelectedFile();
                 e.Handled = true;
+                break;
+            case VirtualKey.Space:
+                if (isControlDown)
+                {
+                    ToggleFocusedFileSelection();
+                    e.Handled = true;
+                }
+
                 break;
             case VirtualKey.Escape:
                 ViewModel.SelectFile(null);
@@ -114,6 +175,14 @@ public sealed partial class FileExplorerView : UserControl
                 RefreshCurrentFolder();
                 e.Handled = true;
                 break;
+            case VirtualKey.Back:
+                if (!isControlDown && !isShiftDown)
+                {
+                    NavigateBack();
+                    e.Handled = true;
+                }
+
+                break;
         }
     }
 
@@ -122,6 +191,8 @@ public sealed partial class FileExplorerView : UserControl
         if (file.IsDirectory)
         {
             await ViewModel.OpenDirectoryAsync(file.Path);
+            ScrollToTop();
+            FileGridScrollViewer.Focus(FocusState.Programmatic);
             return;
         }
 
@@ -171,7 +242,7 @@ public sealed partial class FileExplorerView : UserControl
         ViewModel.SelectFile(null);
     }
 
-    private void MoveSelectionBy(int offset)
+    private void MoveSelectionBy(int offset, SelectionNavigationMode mode)
     {
         if (ViewModel.Files.Count == 0)
         {
@@ -180,21 +251,23 @@ public sealed partial class FileExplorerView : UserControl
 
         if (ViewModel.SelectedFile is null)
         {
-            SelectFileAt(offset < 0 ? ViewModel.Files.Count - 1 : 0);
+            SelectFileAt(offset < 0 ? ViewModel.Files.Count - 1 : 0, mode);
             return;
         }
 
         var currentIndex = ViewModel.Files.IndexOf(ViewModel.SelectedFile);
         if (currentIndex < 0)
         {
-            SelectFileAt(0);
+            SelectFileAt(0, mode);
             return;
         }
 
-        SelectFileAt(Math.Clamp(currentIndex + offset, 0, ViewModel.Files.Count - 1));
+        SelectFileAt(
+            Math.Clamp(currentIndex + offset, 0, ViewModel.Files.Count - 1),
+            mode);
     }
 
-    private void SelectFileAt(int index)
+    private void SelectFileAt(int index, SelectionNavigationMode mode)
     {
         if (ViewModel.Files.Count == 0)
         {
@@ -202,7 +275,38 @@ public sealed partial class FileExplorerView : UserControl
         }
 
         var clampedIndex = Math.Clamp(index, 0, ViewModel.Files.Count - 1);
-        ViewModel.SelectFile(ViewModel.Files[clampedIndex]);
+        var file = ViewModel.Files[clampedIndex];
+
+        switch (mode)
+        {
+            case SelectionNavigationMode.Extend:
+                ViewModel.ExtendSelectionTo(file);
+                break;
+            case SelectionNavigationMode.Focus:
+                ViewModel.FocusFile(file);
+                break;
+            default:
+                ViewModel.SelectFile(file);
+                break;
+        }
+
+        EnsureSelectedFileVisible();
+    }
+
+    private void ToggleFocusedFileSelection()
+    {
+        if (ViewModel.SelectedFile is null)
+        {
+            if (ViewModel.Files.Count > 0)
+            {
+                ViewModel.ToggleFileSelection(ViewModel.Files[0]);
+                EnsureSelectedFileVisible();
+            }
+
+            return;
+        }
+
+        ViewModel.ToggleFileSelection(ViewModel.SelectedFile);
         EnsureSelectedFileVisible();
     }
 
@@ -219,6 +323,42 @@ public sealed partial class FileExplorerView : UserControl
     private async void RefreshCurrentFolder()
     {
         await ViewModel.RefreshAsync();
+    }
+
+    private async void NavigateToParentDirectory()
+    {
+        if (!ViewModel.CanNavigateToParent)
+        {
+            return;
+        }
+
+        await ViewModel.NavigateToParentAsync();
+        ScrollToTop();
+        FileGridScrollViewer.Focus(FocusState.Programmatic);
+    }
+
+    private async void NavigateBack()
+    {
+        if (!ViewModel.CanNavigateBack)
+        {
+            return;
+        }
+
+        await ViewModel.NavigateBackAsync();
+        ScrollToTop();
+        FileGridScrollViewer.Focus(FocusState.Programmatic);
+    }
+
+    private async void NavigateForward()
+    {
+        if (!ViewModel.CanNavigateForward)
+        {
+            return;
+        }
+
+        await ViewModel.NavigateForwardAsync();
+        ScrollToTop();
+        FileGridScrollViewer.Focus(FocusState.Programmatic);
     }
 
     private int GetFileGridColumnCount()
@@ -267,6 +407,11 @@ public sealed partial class FileExplorerView : UserControl
         }
     }
 
+    private void ScrollToTop()
+    {
+        FileGridScrollViewer.ChangeView(null, 0, null, true);
+    }
+
     private async Task ShowOpenFileErrorDialogAsync(string fileName, string message)
     {
         var dialog = new ContentDialog
@@ -286,6 +431,28 @@ public sealed partial class FileExplorerView : UserControl
             ? file
             : null;
     }
+
+    private static SelectionNavigationMode ResolveSelectionNavigationMode(
+        bool isShiftDown,
+        bool isControlDown)
+    {
+        if (isShiftDown)
+        {
+            return SelectionNavigationMode.Extend;
+        }
+
+        return isControlDown
+            ? SelectionNavigationMode.Focus
+            : SelectionNavigationMode.Select;
+    }
+
+    private static bool IsKeyDown(VirtualKey key)
+    {
+        return (GetKeyState((int)key) & KeyDownStateMask) != 0;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern short GetKeyState(int virtualKey);
 
     private static bool IsWithinFileCard(object? source)
     {
