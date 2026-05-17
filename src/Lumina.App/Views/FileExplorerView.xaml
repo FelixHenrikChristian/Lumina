@@ -23,9 +23,12 @@
             </Grid.ColumnDefinitions>
 
             <TextBox
+                x:Name="SearchBox"
                 Header="Search"
-                IsEnabled="False"
-                PlaceholderText="Search current folder" />
+                IsEnabled="{Binding CanSearch}"
+                PlaceholderText="Search current folder"
+                Text="{Binding SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                TextChanged="SearchBox_TextChanged" />
 
             <CommandBar
                 Grid.Column="1"
@@ -118,6 +121,7 @@
                 PointerPressed="FileGridScrollViewer_PointerPressed"
                 PointerWheelChanged="FileGridScrollViewer_PointerWheelChanged"
                 PreviewKeyDown="FileGridScrollViewer_PreviewKeyDown"
+                UseSystemFocusVisuals="False"
                 VerticalScrollMode="Enabled"
                 VerticalScrollBarVisibility="Auto"
                 Visibility="{Binding FileGridVisibility}">

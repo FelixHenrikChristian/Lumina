@@ -34,28 +34,20 @@ empty grid space gives focus to the file grid.
 | Home | Selects the first file card. |
 | End | Selects the last file card. |
 | Enter | Opens the selected file or folder. |
+| F2 | Renames the focused file or folder. |
+| Delete | Moves the selected files or folders to the Recycle Bin. |
+| Shift + Delete | Permanently deletes the selected files or folders after confirmation. |
+| Ctrl + C | Copies the selected files or folders. |
+| Ctrl + X | Cuts the selected files or folders. |
+| Ctrl + V | Pastes copied or cut files into the current folder. |
+| Ctrl + F | Focuses folder search. |
+| Ctrl + E | Focuses folder search. |
 | Escape | Clears the current selection. |
 | F5 | Refreshes the current folder. |
 | Alt + Up Arrow | Opens the parent folder. |
 | Alt + Left Arrow | Navigates backward in folder history. |
 | Alt + Right Arrow | Navigates forward in folder history. |
 | Backspace | Navigates backward in folder history. |
-
-## Planned Inputs
-
-These Windows File Explorer shortcuts are intentionally not implemented yet
-because the underlying file operations are not ready.
-
-| Key | Planned behavior |
-| --- | --- |
-| F2 | Rename the focused file or folder. |
-| Delete | Delete the selected files or folders. |
-| Shift + Delete | Permanently delete the selected files or folders. |
-| Ctrl + C | Copy the selected files or folders. |
-| Ctrl + X | Cut the selected files or folders. |
-| Ctrl + V | Paste copied or cut files into the current folder. |
-| Ctrl + F | Focus folder search. |
-| Ctrl + E | Focus folder search. |
 
 ## Implementation Notes
 

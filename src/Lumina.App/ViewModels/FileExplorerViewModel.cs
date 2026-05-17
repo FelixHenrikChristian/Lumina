@@ -21,6 +21,7 @@ public sealed class FileExplorerViewModel : ObservableObject
     private string _currentPath = string.Empty;
     private string _currentLocationName = string.Empty;
     private string? _errorMessage;
+    private string _searchQuery = string.Empty;
     private bool _isBusy;
     private double _cardHeight = CalculateCardHeight(CardWidthZoomLevels[DefaultZoomLevelIndex]);
     private double _cardWidth = CardWidthZoomLevels[DefaultZoomLevelIndex];
@@ -92,6 +93,8 @@ public sealed class FileExplorerViewModel : ObservableObject
 
     public bool CanRefresh => !IsBusy && !string.IsNullOrWhiteSpace(CurrentPath);
 
+    public bool CanSearch => !string.IsNullOrWhiteSpace(CurrentPath);
+
     public bool CanNavigateBack => _backStack.Count > 0;
 
     public bool CanNavigateForward => _forwardStack.Count > 0;
@@ -121,6 +124,12 @@ public sealed class FileExplorerViewModel : ObservableObject
             ? Visibility.Visible
             : Visibility.Collapsed;
 
+    public string SearchQuery
+    {
+        get => _searchQuery;
+        set => SetProperty(ref _searchQuery, value);
+    }
+
     public async Task OpenLocationAsync(
         Location? location,
         CancellationToken cancellationToken = default)
@@ -130,6 +139,7 @@ public sealed class FileExplorerViewModel : ObservableObject
         _currentLocation = location;
         CurrentLocationName = location?.Name ?? string.Empty;
         CurrentPath = location?.Path ?? string.Empty;
+        ClearSearchQuery();
         _backStack.Clear();
         _forwardStack.Clear();
         ClearSelection();
@@ -146,6 +156,13 @@ public sealed class FileExplorerViewModel : ObservableObject
     }
 
     public Task RefreshAsync(CancellationToken cancellationToken = default)
+    {
+        return string.IsNullOrWhiteSpace(CurrentPath)
+            ? Task.CompletedTask
+            : LoadCurrentDirectoryAsync(cancellationToken);
+    }
+
+    public Task SearchAsync(CancellationToken cancellationToken = default)
     {
         return string.IsNullOrWhiteSpace(CurrentPath)
             ? Task.CompletedTask
@@ -265,6 +282,17 @@ public sealed class FileExplorerViewModel : ObservableObject
         SelectedFile ??= Files[0];
     }
 
+    public IReadOnlyList<FileExplorerItemViewModel> GetSelectedFilesOrFocusedFile()
+    {
+        var selectedFiles = Files.Where(file => file.IsSelected).ToList();
+        if (selectedFiles.Count > 0)
+        {
+            return selectedFiles;
+        }
+
+        return SelectedFile is null ? [] : [SelectedFile];
+    }
+
     public async Task OpenDirectoryAsync(
         string directoryPath,
         CancellationToken cancellationToken = default)
@@ -285,6 +313,7 @@ public sealed class FileExplorerViewModel : ObservableObject
 
         _forwardStack.Clear();
         CurrentPath = targetPath;
+        ClearSearchQuery();
         ClearSelection();
         await LoadCurrentDirectoryAsync(cancellationToken);
     }
@@ -303,6 +332,7 @@ public sealed class FileExplorerViewModel : ObservableObject
         }
 
         CurrentPath = targetPath;
+        ClearSearchQuery();
         ClearSelection();
         await LoadCurrentDirectoryAsync(cancellationToken);
     }
@@ -321,6 +351,7 @@ public sealed class FileExplorerViewModel : ObservableObject
         }
 
         CurrentPath = targetPath;
+        ClearSearchQuery();
         ClearSelection();
         await LoadCurrentDirectoryAsync(cancellationToken);
     }
@@ -367,6 +398,85 @@ public sealed class FileExplorerViewModel : ObservableObject
         }
     }
 
+    public async Task RenameFileAsync(
+        FileExplorerItemViewModel file,
+        string newName,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        ArgumentException.ThrowIfNullOrWhiteSpace(newName);
+
+        var renamedPath = await _fileBrowserService.RenameAsync(
+            file.Path,
+            newName,
+            cancellationToken);
+        await RefreshAndSelectAsync([renamedPath], cancellationToken);
+    }
+
+    public async Task DeleteFilesAsync(
+        IReadOnlyList<FileExplorerItemViewModel> files,
+        FileDeleteBehavior deleteBehavior,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(files);
+
+        if (files.Count == 0)
+        {
+            return;
+        }
+
+        var nextSelectionIndex = files
+            .Select(file => Files.IndexOf(file))
+            .Where(index => index >= 0)
+            .DefaultIfEmpty(0)
+            .Min();
+        var paths = files.Select(file => file.Path).ToList();
+
+        await _fileBrowserService.DeleteAsync(paths, deleteBehavior, cancellationToken);
+        await LoadCurrentDirectoryAsync(cancellationToken);
+
+        if (Files.Count > 0)
+        {
+            SelectFile(Files[Math.Clamp(nextSelectionIndex, 0, Files.Count - 1)]);
+        }
+    }
+
+    public async Task CopyFilesIntoCurrentDirectoryAsync(
+        IReadOnlyList<string> sourcePaths,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sourcePaths);
+
+        if (sourcePaths.Count == 0 || string.IsNullOrWhiteSpace(CurrentPath))
+        {
+            return;
+        }
+
+        var copiedPaths = await _fileBrowserService.CopyAsync(
+            sourcePaths,
+            CurrentPath,
+            cancellationToken);
+        await RefreshAndSelectAsync(copiedPaths, cancellationToken);
+    }
+
+    public async Task MoveFilesIntoCurrentDirectoryAsync(
+        IReadOnlyList<string> sourcePaths,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sourcePaths);
+
+        if (sourcePaths.Count == 0 || string.IsNullOrWhiteSpace(CurrentPath))
+        {
+            return;
+        }
+
+        var movedPaths = await _fileBrowserService.MoveAsync(
+            sourcePaths,
+            CurrentPath,
+            cancellationToken);
+        await RefreshAndSelectAsync(movedPaths, cancellationToken);
+    }
+
     private async Task LoadCurrentDirectoryAsync(CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(CurrentPath))
@@ -386,9 +496,14 @@ public sealed class FileExplorerViewModel : ObservableObject
 
         try
         {
-            var files = await _fileBrowserService.LoadDirectoryAsync(
-                CurrentPath,
-                loadCancellation.Token);
+            var files = string.IsNullOrWhiteSpace(SearchQuery)
+                ? await _fileBrowserService.LoadDirectoryAsync(
+                    CurrentPath,
+                    loadCancellation.Token)
+                : await _fileBrowserService.SearchDirectoryAsync(
+                    CurrentPath,
+                    SearchQuery,
+                    loadCancellation.Token);
 
             loadCancellation.Token.ThrowIfCancellationRequested();
 
@@ -425,6 +540,7 @@ public sealed class FileExplorerViewModel : ObservableObject
     private void OnComputedStateChanged()
     {
         OnPropertyChanged(nameof(CanRefresh));
+        OnPropertyChanged(nameof(CanSearch));
         OnPropertyChanged(nameof(HasFiles));
         OnPropertyChanged(nameof(HasError));
         OnPropertyChanged(nameof(BusyVisibility));
@@ -432,6 +548,46 @@ public sealed class FileExplorerViewModel : ObservableObject
         OnPropertyChanged(nameof(ErrorVisibility));
         OnPropertyChanged(nameof(FileGridVisibility));
         OnPropertyChanged(nameof(NoLocationVisibility));
+    }
+
+    private async Task RefreshAndSelectAsync(
+        IReadOnlyList<string> selectedPaths,
+        CancellationToken cancellationToken)
+    {
+        await LoadCurrentDirectoryAsync(cancellationToken);
+        SelectFilesByPaths(selectedPaths);
+    }
+
+    private void SelectFilesByPaths(IReadOnlyList<string> paths)
+    {
+        var normalizedPaths = paths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(NormalizeDirectoryPath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (normalizedPaths.Count == 0)
+        {
+            return;
+        }
+
+        ClearSelectedFiles();
+        _selectionAnchor = null;
+
+        foreach (var file in Files)
+        {
+            if (!normalizedPaths.Contains(NormalizeDirectoryPath(file.Path)))
+            {
+                continue;
+            }
+
+            file.IsSelected = true;
+            _selectionAnchor ??= file;
+            SelectedFile = file;
+        }
+    }
+
+    private void ClearSearchQuery()
+    {
+        SearchQuery = string.Empty;
     }
 
     private void ClearSelection()
@@ -580,6 +736,8 @@ public sealed class FileExplorerItemViewModel : ObservableObject
     public string Name => string.IsNullOrWhiteSpace(File.DisplayName)
         ? File.Name
         : File.DisplayName;
+
+    public string FileSystemName => File.Name;
 
     public string Path => File.Path;
 
