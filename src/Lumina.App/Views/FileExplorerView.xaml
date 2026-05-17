@@ -111,10 +111,13 @@
             </StackPanel>
 
             <ScrollViewer
+                x:Name="FileGridScrollViewer"
                 HorizontalScrollBarVisibility="Disabled"
                 HorizontalScrollMode="Disabled"
+                IsTabStop="True"
                 PointerPressed="FileGridScrollViewer_PointerPressed"
                 PointerWheelChanged="FileGridScrollViewer_PointerWheelChanged"
+                PreviewKeyDown="FileGridScrollViewer_PreviewKeyDown"
                 VerticalScrollMode="Enabled"
                 VerticalScrollBarVisibility="Auto"
                 Visibility="{Binding FileGridVisibility}">

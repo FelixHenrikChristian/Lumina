@@ -13,6 +13,9 @@ namespace Lumina.App.Views;
 
 public sealed partial class FileExplorerView : UserControl
 {
+    private const double FileGridMinColumnSpacing = 16;
+    private const double FileGridRowSpacing = 18;
+
     public FileExplorerView()
     {
         ViewModel = new FileExplorerViewModel();
@@ -56,6 +59,7 @@ public sealed partial class FileExplorerView : UserControl
         }
 
         ViewModel.SelectFile(file);
+        FileGridScrollViewer.Focus(FocusState.Pointer);
     }
 
     private async void FileCard_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
@@ -66,11 +70,58 @@ public sealed partial class FileExplorerView : UserControl
         }
 
         ViewModel.SelectFile(file);
+        await OpenFileAsync(file);
+        e.Handled = true;
+    }
 
+    private void FileGridScrollViewer_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case VirtualKey.Left:
+                MoveSelectionBy(-1);
+                e.Handled = true;
+                break;
+            case VirtualKey.Right:
+                MoveSelectionBy(1);
+                e.Handled = true;
+                break;
+            case VirtualKey.Up:
+                MoveSelectionBy(-GetFileGridColumnCount());
+                e.Handled = true;
+                break;
+            case VirtualKey.Down:
+                MoveSelectionBy(GetFileGridColumnCount());
+                e.Handled = true;
+                break;
+            case VirtualKey.Home:
+                SelectFileAt(0);
+                e.Handled = true;
+                break;
+            case VirtualKey.End:
+                SelectFileAt(ViewModel.Files.Count - 1);
+                e.Handled = true;
+                break;
+            case VirtualKey.Enter:
+                OpenSelectedFile();
+                e.Handled = true;
+                break;
+            case VirtualKey.Escape:
+                ViewModel.SelectFile(null);
+                e.Handled = true;
+                break;
+            case VirtualKey.F5:
+                RefreshCurrentFolder();
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private async Task OpenFileAsync(FileExplorerItemViewModel file)
+    {
         if (file.IsDirectory)
         {
             await ViewModel.OpenDirectoryAsync(file.Path);
-            e.Handled = true;
             return;
         }
 
@@ -86,8 +137,6 @@ public sealed partial class FileExplorerView : UserControl
         {
             await ShowOpenFileErrorDialogAsync(file.Name, ex.Message);
         }
-
-        e.Handled = true;
     }
 
     private void FileGridScrollViewer_PointerWheelChanged(
@@ -106,17 +155,116 @@ public sealed partial class FileExplorerView : UserControl
         }
 
         ViewModel.ZoomByWheelDelta(wheelDelta);
+        EnsureSelectedFileVisible();
         e.Handled = true;
     }
 
     private void FileGridScrollViewer_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        FileGridScrollViewer.Focus(FocusState.Pointer);
+
         if (IsWithinFileCard(e.OriginalSource))
         {
             return;
         }
 
         ViewModel.SelectFile(null);
+    }
+
+    private void MoveSelectionBy(int offset)
+    {
+        if (ViewModel.Files.Count == 0)
+        {
+            return;
+        }
+
+        if (ViewModel.SelectedFile is null)
+        {
+            SelectFileAt(offset < 0 ? ViewModel.Files.Count - 1 : 0);
+            return;
+        }
+
+        var currentIndex = ViewModel.Files.IndexOf(ViewModel.SelectedFile);
+        if (currentIndex < 0)
+        {
+            SelectFileAt(0);
+            return;
+        }
+
+        SelectFileAt(Math.Clamp(currentIndex + offset, 0, ViewModel.Files.Count - 1));
+    }
+
+    private void SelectFileAt(int index)
+    {
+        if (ViewModel.Files.Count == 0)
+        {
+            return;
+        }
+
+        var clampedIndex = Math.Clamp(index, 0, ViewModel.Files.Count - 1);
+        ViewModel.SelectFile(ViewModel.Files[clampedIndex]);
+        EnsureSelectedFileVisible();
+    }
+
+    private async void OpenSelectedFile()
+    {
+        if (ViewModel.SelectedFile is null)
+        {
+            return;
+        }
+
+        await OpenFileAsync(ViewModel.SelectedFile);
+    }
+
+    private async void RefreshCurrentFolder()
+    {
+        await ViewModel.RefreshAsync();
+    }
+
+    private int GetFileGridColumnCount()
+    {
+        if (ViewModel.Files.Count == 0)
+        {
+            return 1;
+        }
+
+        var width = Math.Max(0, FileGridScrollViewer.ActualWidth);
+        var slotWidth = ViewModel.CardWidth + FileGridMinColumnSpacing;
+
+        return Math.Max(1, (int)Math.Floor(width / slotWidth));
+    }
+
+    private void EnsureSelectedFileVisible()
+    {
+        if (ViewModel.SelectedFile is null)
+        {
+            return;
+        }
+
+        var selectedIndex = ViewModel.Files.IndexOf(ViewModel.SelectedFile);
+        if (selectedIndex < 0)
+        {
+            return;
+        }
+
+        var columns = GetFileGridColumnCount();
+        var row = selectedIndex / columns;
+        var itemTop = row * (ViewModel.CardHeight + FileGridRowSpacing);
+        var itemBottom = itemTop + ViewModel.CardHeight;
+        var viewportTop = FileGridScrollViewer.VerticalOffset;
+        var viewportBottom = viewportTop + FileGridScrollViewer.ViewportHeight;
+
+        if (itemTop < viewportTop)
+        {
+            FileGridScrollViewer.ChangeView(null, itemTop, null, true);
+            return;
+        }
+
+        if (itemBottom > viewportBottom)
+        {
+            var targetOffset = Math.Max(0, itemBottom - FileGridScrollViewer.ViewportHeight);
+            FileGridScrollViewer.ChangeView(null, targetOffset, null, true);
+        }
     }
 
     private async Task ShowOpenFileErrorDialogAsync(string fileName, string message)
