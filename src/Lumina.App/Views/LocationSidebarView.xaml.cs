@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Media;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 
+using Lumina.App.Services;
 using Lumina.App.ViewModels;
 using Lumina.Core.Models;
 
@@ -38,6 +39,7 @@ public sealed partial class LocationSidebarView : Page
         _hasLoaded = true;
         await ViewModel.LoadAsync();
         QueueSynchronizeSelectedLocation();
+        LocationSelectionEvents.RaiseSelectionChanged(ViewModel.SelectedLocation);
     }
 
     private void RootGrid_RightTapped(object sender, RightTappedRoutedEventArgs e)
@@ -68,6 +70,7 @@ public sealed partial class LocationSidebarView : Page
         if (sender.SelectedItem is Location location)
         {
             await ViewModel.SelectLocationAsync(location);
+            LocationSelectionEvents.RaiseSelectionChanged(ViewModel.SelectedLocation);
         }
     }
 
@@ -96,6 +99,7 @@ public sealed partial class LocationSidebarView : Page
 
         await ViewModel.AddLocationAsync(folderPath, displayName);
         QueueSynchronizeSelectedLocation();
+        LocationSelectionEvents.RaiseSelectionChanged(ViewModel.SelectedLocation);
     }
 
     private async void EditLocation_Click(object sender, RoutedEventArgs e)
@@ -118,6 +122,8 @@ public sealed partial class LocationSidebarView : Page
         }
 
         await ViewModel.RenameLocationAsync(location, displayName);
+        QueueSynchronizeSelectedLocation();
+        LocationSelectionEvents.RaiseSelectionChanged(ViewModel.SelectedLocation);
     }
 
     private async void DeleteLocation_Click(object sender, RoutedEventArgs e)
@@ -136,6 +142,8 @@ public sealed partial class LocationSidebarView : Page
         }
 
         await ViewModel.DeleteLocationAsync(location);
+        QueueSynchronizeSelectedLocation();
+        LocationSelectionEvents.RaiseSelectionChanged(ViewModel.SelectedLocation);
     }
 
     private async void ClearLocations_Click(object sender, RoutedEventArgs e)
@@ -153,6 +161,7 @@ public sealed partial class LocationSidebarView : Page
 
         await ViewModel.ClearLocationsAsync();
         QueueSynchronizeSelectedLocation();
+        LocationSelectionEvents.RaiseSelectionChanged(ViewModel.SelectedLocation);
     }
 
     private async void OpenLocation_Click(object sender, RoutedEventArgs e)
@@ -163,6 +172,7 @@ public sealed partial class LocationSidebarView : Page
         }
 
         await ViewModel.SelectLocationAsync(location);
+        LocationSelectionEvents.RaiseSelectionChanged(ViewModel.SelectedLocation);
 
         try
         {
