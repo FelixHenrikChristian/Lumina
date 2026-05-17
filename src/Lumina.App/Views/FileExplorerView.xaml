@@ -113,6 +113,7 @@
             <ScrollViewer
                 HorizontalScrollBarVisibility="Disabled"
                 HorizontalScrollMode="Disabled"
+                PointerPressed="FileGridScrollViewer_PointerPressed"
                 PointerWheelChanged="FileGridScrollViewer_PointerWheelChanged"
                 VerticalScrollMode="Enabled"
                 VerticalScrollBarVisibility="Auto"
@@ -131,6 +132,7 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <Border
+                                x:Name="FileCard"
                                 Width="{Binding CardWidth}"
                                 Height="{Binding CardHeight}"
                                 AutomationProperties.Name="{Binding Name}"
@@ -138,6 +140,8 @@
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1"
                                 CornerRadius="6"
+                                DoubleTapped="FileCard_DoubleTapped"
+                                PointerPressed="FileCard_PointerPressed"
                                 ToolTipService.ToolTip="{Binding Path=Path}">
                                 <Grid>
                                     <Grid.RowDefinitions>
@@ -228,6 +232,15 @@
                                                 TextTrimming="CharacterEllipsis" />
                                         </Grid>
                                     </Grid>
+
+                                    <Border
+                                        Grid.RowSpan="2"
+                                        Background="Transparent"
+                                        BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                                        BorderThickness="2"
+                                        CornerRadius="6"
+                                        IsHitTestVisible="False"
+                                        Visibility="{Binding SelectionVisibility}" />
                                 </Grid>
                             </Border>
                         </DataTemplate>

@@ -25,6 +25,7 @@ public sealed class FileExplorerViewModel : ObservableObject
     private double _thumbnailIconFontSize = CalculateThumbnailIconFontSize(CardWidthZoomLevels[DefaultZoomLevelIndex]);
     private Location? _currentLocation;
     private CancellationTokenSource? _loadCancellation;
+    private FileExplorerItemViewModel? _selectedFile;
     private int _zoomLevelIndex = DefaultZoomLevelIndex;
 
     public FileExplorerViewModel()
@@ -86,7 +87,7 @@ public sealed class FileExplorerViewModel : ObservableObject
         }
     }
 
-    public bool CanRefresh => !IsBusy && _currentLocation is not null;
+    public bool CanRefresh => !IsBusy && !string.IsNullOrWhiteSpace(CurrentPath);
 
     public bool HasFiles => Files.Count > 0;
 
@@ -120,6 +121,7 @@ public sealed class FileExplorerViewModel : ObservableObject
         _currentLocation = location;
         CurrentLocationName = location?.Name ?? string.Empty;
         CurrentPath = location?.Path ?? string.Empty;
+        SelectedFile = null;
         Files.Clear();
         ErrorMessage = null;
         OnComputedStateChanged();
@@ -129,14 +131,14 @@ public sealed class FileExplorerViewModel : ObservableObject
             return;
         }
 
-        await LoadCurrentLocationAsync(cancellationToken);
+        await LoadCurrentDirectoryAsync(cancellationToken);
     }
 
     public Task RefreshAsync(CancellationToken cancellationToken = default)
     {
-        return _currentLocation is null
+        return string.IsNullOrWhiteSpace(CurrentPath)
             ? Task.CompletedTask
-            : LoadCurrentLocationAsync(cancellationToken);
+            : LoadCurrentDirectoryAsync(cancellationToken);
     }
 
     public double CardHeight
@@ -155,6 +157,43 @@ public sealed class FileExplorerViewModel : ObservableObject
     {
         get => _thumbnailIconFontSize;
         private set => SetProperty(ref _thumbnailIconFontSize, value);
+    }
+
+    public FileExplorerItemViewModel? SelectedFile
+    {
+        get => _selectedFile;
+        private set => SetProperty(ref _selectedFile, value);
+    }
+
+    public void SelectFile(FileExplorerItemViewModel? file)
+    {
+        if (ReferenceEquals(SelectedFile, file))
+        {
+            return;
+        }
+
+        if (SelectedFile is not null)
+        {
+            SelectedFile.IsSelected = false;
+        }
+
+        SelectedFile = file;
+
+        if (SelectedFile is not null)
+        {
+            SelectedFile.IsSelected = true;
+        }
+    }
+
+    public async Task OpenDirectoryAsync(
+        string directoryPath,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(directoryPath);
+
+        CurrentPath = directoryPath.Trim();
+        SelectedFile = null;
+        await LoadCurrentDirectoryAsync(cancellationToken);
     }
 
     public void ZoomByWheelDelta(int wheelDelta)
@@ -188,9 +227,9 @@ public sealed class FileExplorerViewModel : ObservableObject
         }
     }
 
-    private async Task LoadCurrentLocationAsync(CancellationToken cancellationToken)
+    private async Task LoadCurrentDirectoryAsync(CancellationToken cancellationToken)
     {
-        if (_currentLocation is null)
+        if (string.IsNullOrWhiteSpace(CurrentPath))
         {
             return;
         }
@@ -201,13 +240,14 @@ public sealed class FileExplorerViewModel : ObservableObject
 
         IsBusy = true;
         ErrorMessage = null;
+        SelectFile(null);
         Files.Clear();
         OnComputedStateChanged();
 
         try
         {
             var files = await _fileBrowserService.LoadDirectoryAsync(
-                _currentLocation.Path,
+                CurrentPath,
                 loadCancellation.Token);
 
             loadCancellation.Token.ThrowIfCancellationRequested();
@@ -269,6 +309,7 @@ public sealed class FileExplorerItemViewModel : ObservableObject
 {
     private double _cardHeight;
     private double _cardWidth;
+    private bool _isSelected;
     private double _thumbnailIconFontSize;
 
     public FileExplorerItemViewModel(
@@ -302,6 +343,22 @@ public sealed class FileExplorerItemViewModel : ObservableObject
         get => _thumbnailIconFontSize;
         private set => SetProperty(ref _thumbnailIconFontSize, value);
     }
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (SetProperty(ref _isSelected, value))
+            {
+                OnPropertyChanged(nameof(SelectionVisibility));
+            }
+        }
+    }
+
+    public Visibility SelectionVisibility => IsSelected
+        ? Visibility.Visible
+        : Visibility.Collapsed;
 
     public string Name => string.IsNullOrWhiteSpace(File.DisplayName)
         ? File.Name
