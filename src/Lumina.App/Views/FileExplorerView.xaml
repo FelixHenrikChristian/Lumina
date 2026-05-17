@@ -113,6 +113,7 @@
             <ScrollViewer
                 HorizontalScrollBarVisibility="Disabled"
                 HorizontalScrollMode="Disabled"
+                PointerWheelChanged="FileGridScrollViewer_PointerWheelChanged"
                 VerticalScrollMode="Enabled"
                 VerticalScrollBarVisibility="Auto"
                 Visibility="{Binding FileGridVisibility}">
@@ -130,8 +131,8 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <Border
-                                Width="240"
-                                Height="176"
+                                Width="{Binding CardWidth}"
+                                Height="{Binding CardHeight}"
                                 AutomationProperties.Name="{Binding Name}"
                                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -151,7 +152,7 @@
                                             HorizontalAlignment="Center"
                                             VerticalAlignment="Center"
                                             FontFamily="Segoe Fluent Icons"
-                                            FontSize="52"
+                                            FontSize="{Binding ThumbnailIconFontSize}"
                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                             Glyph="{Binding IconGlyph}" />
 

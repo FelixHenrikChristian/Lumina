@@ -10,14 +10,22 @@ namespace Lumina.App.ViewModels;
 
 public sealed class FileExplorerViewModel : ObservableObject
 {
+    private static readonly double[] CardWidthZoomLevels = [176, 208, 240, 280, 320, 368];
+    private const double InfoPanelHeight = 48;
+    private const int DefaultZoomLevelIndex = 2;
+
     private readonly IFileBrowserService _fileBrowserService;
 
     private string _currentPath = string.Empty;
     private string _currentLocationName = string.Empty;
     private string? _errorMessage;
     private bool _isBusy;
+    private double _cardHeight = CalculateCardHeight(CardWidthZoomLevels[DefaultZoomLevelIndex]);
+    private double _cardWidth = CardWidthZoomLevels[DefaultZoomLevelIndex];
+    private double _thumbnailIconFontSize = CalculateThumbnailIconFontSize(CardWidthZoomLevels[DefaultZoomLevelIndex]);
     private Location? _currentLocation;
     private CancellationTokenSource? _loadCancellation;
+    private int _zoomLevelIndex = DefaultZoomLevelIndex;
 
     public FileExplorerViewModel()
         : this(new FileSystemBrowserService())
@@ -131,7 +139,54 @@ public sealed class FileExplorerViewModel : ObservableObject
             : LoadCurrentLocationAsync(cancellationToken);
     }
 
-    public double CardWidth { get; set; } = 240;
+    public double CardHeight
+    {
+        get => _cardHeight;
+        private set => SetProperty(ref _cardHeight, value);
+    }
+
+    public double CardWidth
+    {
+        get => _cardWidth;
+        private set => SetProperty(ref _cardWidth, value);
+    }
+
+    public double ThumbnailIconFontSize
+    {
+        get => _thumbnailIconFontSize;
+        private set => SetProperty(ref _thumbnailIconFontSize, value);
+    }
+
+    public void ZoomByWheelDelta(int wheelDelta)
+    {
+        if (wheelDelta == 0)
+        {
+            return;
+        }
+
+        var direction = wheelDelta > 0 ? 1 : -1;
+        var nextZoomLevelIndex = Math.Clamp(
+            _zoomLevelIndex + direction,
+            0,
+            CardWidthZoomLevels.Length - 1);
+
+        if (nextZoomLevelIndex == _zoomLevelIndex)
+        {
+            return;
+        }
+
+        _zoomLevelIndex = nextZoomLevelIndex;
+        var cardWidth = CardWidthZoomLevels[_zoomLevelIndex];
+
+        CardWidth = cardWidth;
+        CardHeight = CalculateCardHeight(cardWidth);
+        ThumbnailIconFontSize = CalculateThumbnailIconFontSize(cardWidth);
+
+        foreach (var file in Files)
+        {
+            file.UpdateCardLayout(CardWidth, CardHeight, ThumbnailIconFontSize);
+        }
+    }
 
     private async Task LoadCurrentLocationAsync(CancellationToken cancellationToken)
     {
@@ -159,7 +214,11 @@ public sealed class FileExplorerViewModel : ObservableObject
 
             foreach (var file in files)
             {
-                Files.Add(new FileExplorerItemViewModel(file));
+                Files.Add(new FileExplorerItemViewModel(
+                    file,
+                    CardWidth,
+                    CardHeight,
+                    ThumbnailIconFontSize));
             }
 
             OnComputedStateChanged();
@@ -194,16 +253,55 @@ public sealed class FileExplorerViewModel : ObservableObject
         OnPropertyChanged(nameof(FileGridVisibility));
         OnPropertyChanged(nameof(NoLocationVisibility));
     }
+
+    private static double CalculateCardHeight(double cardWidth)
+    {
+        return Math.Round((cardWidth * 9 / 16) + InfoPanelHeight);
+    }
+
+    private static double CalculateThumbnailIconFontSize(double cardWidth)
+    {
+        return Math.Clamp(Math.Round(cardWidth * 0.22), 40, 78);
+    }
 }
 
-public sealed class FileExplorerItemViewModel
+public sealed class FileExplorerItemViewModel : ObservableObject
 {
-    public FileExplorerItemViewModel(FileItem file)
+    private double _cardHeight;
+    private double _cardWidth;
+    private double _thumbnailIconFontSize;
+
+    public FileExplorerItemViewModel(
+        FileItem file,
+        double cardWidth,
+        double cardHeight,
+        double thumbnailIconFontSize)
     {
         File = file;
+        _cardWidth = cardWidth;
+        _cardHeight = cardHeight;
+        _thumbnailIconFontSize = thumbnailIconFontSize;
     }
 
     public FileItem File { get; }
+
+    public double CardHeight
+    {
+        get => _cardHeight;
+        private set => SetProperty(ref _cardHeight, value);
+    }
+
+    public double CardWidth
+    {
+        get => _cardWidth;
+        private set => SetProperty(ref _cardWidth, value);
+    }
+
+    public double ThumbnailIconFontSize
+    {
+        get => _thumbnailIconFontSize;
+        private set => SetProperty(ref _thumbnailIconFontSize, value);
+    }
 
     public string Name => string.IsNullOrWhiteSpace(File.DisplayName)
         ? File.Name
@@ -234,6 +332,16 @@ public sealed class FileExplorerItemViewModel
     public string ModifiedText => File.Modified.ToLocalTime().ToString(
         "yyyy-MM-dd HH:mm",
         CultureInfo.CurrentCulture);
+
+    public void UpdateCardLayout(
+        double cardWidth,
+        double cardHeight,
+        double thumbnailIconFontSize)
+    {
+        CardWidth = cardWidth;
+        CardHeight = cardHeight;
+        ThumbnailIconFontSize = thumbnailIconFontSize;
+    }
 
     private static string ResolveFileGlyph(string fileName)
     {

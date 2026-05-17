@@ -1,5 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Windows.System;
 
 using Lumina.App.Services;
 using Lumina.App.ViewModels;
@@ -41,5 +43,24 @@ public sealed partial class FileExplorerView : UserControl
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
         await ViewModel.RefreshAsync();
+    }
+
+    private void FileGridScrollViewer_PointerWheelChanged(
+        object sender,
+        PointerRoutedEventArgs e)
+    {
+        if (!e.KeyModifiers.HasFlag(VirtualKeyModifiers.Control))
+        {
+            return;
+        }
+
+        var wheelDelta = e.GetCurrentPoint((UIElement)sender).Properties.MouseWheelDelta;
+        if (wheelDelta == 0)
+        {
+            return;
+        }
+
+        ViewModel.ZoomByWheelDelta(wheelDelta);
+        e.Handled = true;
     }
 }
