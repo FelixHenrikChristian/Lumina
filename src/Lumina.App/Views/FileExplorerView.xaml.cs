@@ -93,7 +93,10 @@ public sealed partial class FileExplorerView : UserControl
         object? sender,
         LocationSelectionChangedEventArgs e)
     {
+        CancelPendingSearch();
+        _isSearchTextComposing = false;
         await ViewModel.OpenLocationAsync(e.Location);
+        ScrollToTop();
     }
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)

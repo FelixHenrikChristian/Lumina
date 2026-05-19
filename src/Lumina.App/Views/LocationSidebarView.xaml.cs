@@ -74,6 +74,22 @@ public sealed partial class LocationSidebarView : Page
         }
     }
 
+    private void LocationCard_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (_isSynchronizingSelection || IsWithinLocationCommand(e.OriginalSource))
+        {
+            return;
+        }
+
+        if (GetLocationFromDataContext(sender) is not { } location ||
+            ViewModel.SelectedLocation?.Id != location.Id)
+        {
+            return;
+        }
+
+        LocationSelectionEvents.RaiseSelectionChanged(location);
+    }
+
     private async void AddLocation_Click(object sender, RoutedEventArgs e)
     {
         if (!ViewModel.CanAddLocation)
@@ -315,6 +331,13 @@ public sealed partial class LocationSidebarView : Page
         return null;
     }
 
+    private static Location? GetLocationFromDataContext(object sender)
+    {
+        return sender is FrameworkElement { DataContext: Location location }
+            ? location
+            : null;
+    }
+
     private void QueueSynchronizeSelectedLocation()
     {
         DispatcherQueue.TryEnqueue(SynchronizeSelectedLocation);
@@ -353,6 +376,27 @@ public sealed partial class LocationSidebarView : Page
             if (dependencyObject is FrameworkElement { Name: "LocationCard" })
             {
                 return true;
+            }
+
+            dependencyObject = VisualTreeHelper.GetParent(dependencyObject);
+        }
+
+        return false;
+    }
+
+    private static bool IsWithinLocationCommand(object? source)
+    {
+        var dependencyObject = source as DependencyObject;
+        while (dependencyObject is not null)
+        {
+            if (dependencyObject is Button)
+            {
+                return true;
+            }
+
+            if (dependencyObject is FrameworkElement { Name: "LocationCard" })
+            {
+                return false;
             }
 
             dependencyObject = VisualTreeHelper.GetParent(dependencyObject);

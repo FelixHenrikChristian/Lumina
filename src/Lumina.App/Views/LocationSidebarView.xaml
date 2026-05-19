@@ -135,7 +135,8 @@
                     <ItemContainer
                         x:Name="LocationCard"
                         HorizontalAlignment="Stretch"
-                        AutomationProperties.Name="{Binding Name}">
+                        AutomationProperties.Name="{Binding Name}"
+                        PointerPressed="LocationCard_PointerPressed">
                         <Border
                             Padding="12"
                             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
