@@ -41,6 +41,7 @@ public sealed partial class FileExplorerView : UserControl
 
     private FileClipboardState? _fileClipboard;
     private CancellationTokenSource? _searchDebounceCancellation;
+    private TextBox? _searchTextBox;
     private bool _isSearchTextComposing;
 
     public FileExplorerView()
@@ -61,6 +62,7 @@ public sealed partial class FileExplorerView : UserControl
         LocationSelectionEvents.SelectionChanged += LocationSelectionEvents_SelectionChanged;
         Clipboard.ContentChanged -= Clipboard_ContentChanged;
         Clipboard.ContentChanged += Clipboard_ContentChanged;
+        AttachSearchTextBoxEvents();
         await ViewModel.OpenLocationAsync(LocationSelectionEvents.CurrentLocation);
     }
 
@@ -69,6 +71,7 @@ public sealed partial class FileExplorerView : UserControl
         LocationSelectionEvents.SelectionChanged -= LocationSelectionEvents_SelectionChanged;
         Clipboard.ContentChanged -= Clipboard_ContentChanged;
         CancelPendingSearch();
+        DetachSearchTextBoxEvents();
     }
 
     private void Clipboard_ContentChanged(object? sender, object e)
@@ -96,6 +99,67 @@ public sealed partial class FileExplorerView : UserControl
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
         await ViewModel.RefreshAsync();
+    }
+
+    private async void AddressBreadcrumbBar_ItemClicked(
+        BreadcrumbBar sender,
+        BreadcrumbBarItemClickedEventArgs args)
+    {
+        var items = ViewModel.BreadcrumbItems;
+        if (args.Index < 0 || args.Index >= items.Count - 1)
+        {
+            return;
+        }
+
+        var targetPath = items[args.Index].Path;
+        if (string.IsNullOrWhiteSpace(targetPath))
+        {
+            return;
+        }
+
+        await ViewModel.OpenDirectoryAsync(targetPath);
+        ScrollToTop();
+        FileGridScrollViewer.Focus(FocusState.Programmatic);
+    }
+
+    private void BackButton_Click(object sender, RoutedEventArgs e)
+    {
+        NavigateBack();
+    }
+
+    private void ForwardButton_Click(object sender, RoutedEventArgs e)
+    {
+        NavigateForward();
+    }
+
+    private void UpButton_Click(object sender, RoutedEventArgs e)
+    {
+        NavigateToParentDirectory();
+    }
+
+    private void CutButton_Click(object sender, RoutedEventArgs e)
+    {
+        CutSelectedFiles();
+    }
+
+    private void CopyButton_Click(object sender, RoutedEventArgs e)
+    {
+        CopySelectedFiles();
+    }
+
+    private void PasteButton_Click(object sender, RoutedEventArgs e)
+    {
+        PasteFiles();
+    }
+
+    private void RenameButton_Click(object sender, RoutedEventArgs e)
+    {
+        RenameFocusedFile();
+    }
+
+    private void DeleteButton_Click(object sender, RoutedEventArgs e)
+    {
+        DeleteSelectedFiles(permanently: false);
     }
 
     private void FileCard_PointerPressed(object sender, PointerRoutedEventArgs e)
@@ -273,10 +337,16 @@ public sealed partial class FileExplorerView : UserControl
         }
     }
 
-    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    private void SearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
     {
-        ViewModel.SearchQuery = SearchBox.Text;
-        if (SearchBox.FocusState == FocusState.Unfocused || _isSearchTextComposing)
+        ViewModel.SearchQuery = sender.Text;
+        if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
+        {
+            CancelPendingSearch();
+            return;
+        }
+
+        if (_isSearchTextComposing)
         {
             CancelPendingSearch();
             return;
@@ -285,7 +355,18 @@ public sealed partial class FileExplorerView : UserControl
         ScheduleSearch();
     }
 
-    private void SearchBox_TextCompositionStarted(
+    private async void SearchBox_QuerySubmitted(
+        AutoSuggestBox sender,
+        AutoSuggestBoxQuerySubmittedEventArgs args)
+    {
+        CancelPendingSearch();
+        _isSearchTextComposing = false;
+        ViewModel.SearchQuery = sender.Text;
+        await ViewModel.SearchAsync();
+        ScrollToTop();
+    }
+
+    private void SearchTextBox_TextCompositionStarted(
         TextBox sender,
         TextCompositionStartedEventArgs args)
     {
@@ -293,17 +374,13 @@ public sealed partial class FileExplorerView : UserControl
         CancelPendingSearch();
     }
 
-    private void SearchBox_TextCompositionEnded(
+    private void SearchTextBox_TextCompositionEnded(
         TextBox sender,
         TextCompositionEndedEventArgs args)
     {
         _isSearchTextComposing = false;
         ViewModel.SearchQuery = SearchBox.Text;
-
-        if (SearchBox.FocusState != FocusState.Unfocused)
-        {
-            ScheduleSearch();
-        }
+        ScheduleSearch();
     }
 
     private void ScheduleSearch()
@@ -459,7 +536,8 @@ public sealed partial class FileExplorerView : UserControl
         }
 
         SearchBox.Focus(FocusState.Programmatic);
-        SearchBox.SelectAll();
+        AttachSearchTextBoxEvents();
+        _searchTextBox?.SelectAll();
     }
 
     private async void RenameFocusedFile()
@@ -924,6 +1002,62 @@ public sealed partial class FileExplorerView : UserControl
     private static bool PathExists(string path)
     {
         return File.Exists(path) || Directory.Exists(path);
+    }
+
+    private void AttachSearchTextBoxEvents()
+    {
+        SearchBox.ApplyTemplate();
+        var textBox = FindDescendant<TextBox>(SearchBox);
+        if (ReferenceEquals(_searchTextBox, textBox))
+        {
+            return;
+        }
+
+        DetachSearchTextBoxEvents();
+        _searchTextBox = textBox;
+
+        if (_searchTextBox is null)
+        {
+            return;
+        }
+
+        _searchTextBox.TextCompositionStarted += SearchTextBox_TextCompositionStarted;
+        _searchTextBox.TextCompositionEnded += SearchTextBox_TextCompositionEnded;
+    }
+
+    private void DetachSearchTextBoxEvents()
+    {
+        if (_searchTextBox is null)
+        {
+            return;
+        }
+
+        _searchTextBox.TextCompositionStarted -= SearchTextBox_TextCompositionStarted;
+        _searchTextBox.TextCompositionEnded -= SearchTextBox_TextCompositionEnded;
+        _searchTextBox = null;
+        _isSearchTextComposing = false;
+    }
+
+    private static T? FindDescendant<T>(DependencyObject parent)
+        where T : DependencyObject
+    {
+        var childCount = VisualTreeHelper.GetChildrenCount(parent);
+        for (var i = 0; i < childCount; i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            var descendant = FindDescendant<T>(child);
+            if (descendant is not null)
+            {
+                return descendant;
+            }
+        }
+
+        return null;
     }
 
     [DllImport("user32.dll")]

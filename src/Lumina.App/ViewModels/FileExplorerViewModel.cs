@@ -52,6 +52,8 @@ public sealed class FileExplorerViewModel : ObservableObject
             if (SetProperty(ref _currentPath, value))
             {
                 OnPropertyChanged(nameof(BreadcrumbText));
+                OnPropertyChanged(nameof(BreadcrumbItems));
+                OnPropertyChanged(nameof(SearchPlaceholderText));
                 OnComputedStateChanged();
             }
         }
@@ -66,6 +68,13 @@ public sealed class FileExplorerViewModel : ObservableObject
     public string BreadcrumbText => string.IsNullOrWhiteSpace(CurrentPath)
         ? "No location selected"
         : CurrentPath;
+
+    public IReadOnlyList<FileExplorerBreadcrumbItemViewModel> BreadcrumbItems =>
+        BuildBreadcrumbItems(CurrentPath);
+
+    public string SearchPlaceholderText => string.IsNullOrWhiteSpace(CurrentPath)
+        ? "Search"
+        : $"Search in {GetCurrentFolderName(CurrentPath)}";
 
     public string? ErrorMessage
     {
@@ -100,6 +109,10 @@ public sealed class FileExplorerViewModel : ObservableObject
     public bool CanNavigateForward => _forwardStack.Count > 0;
 
     public bool CanNavigateToParent => !string.IsNullOrWhiteSpace(GetParentDirectoryPath(CurrentPath));
+
+    public bool CanUseFolderCommands => !IsBusy && !string.IsNullOrWhiteSpace(CurrentPath);
+
+    public bool CanUseSelectedFileCommands => CanUseFolderCommands && SelectedFile is not null;
 
     public bool HasFiles => Files.Count > 0;
 
@@ -210,6 +223,7 @@ public sealed class FileExplorerViewModel : ObservableObject
             }
 
             OnPropertyChanged();
+            OnPropertyChanged(nameof(CanUseSelectedFileCommands));
         }
     }
 
@@ -541,6 +555,13 @@ public sealed class FileExplorerViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(CanRefresh));
         OnPropertyChanged(nameof(CanSearch));
+        OnPropertyChanged(nameof(CanNavigateBack));
+        OnPropertyChanged(nameof(CanNavigateForward));
+        OnPropertyChanged(nameof(CanNavigateToParent));
+        OnPropertyChanged(nameof(CanUseFolderCommands));
+        OnPropertyChanged(nameof(CanUseSelectedFileCommands));
+        OnPropertyChanged(nameof(BreadcrumbItems));
+        OnPropertyChanged(nameof(SearchPlaceholderText));
         OnPropertyChanged(nameof(HasFiles));
         OnPropertyChanged(nameof(HasError));
         OnPropertyChanged(nameof(BusyVisibility));
@@ -620,6 +641,76 @@ public sealed class FileExplorerViewModel : ObservableObject
         return Path.GetFullPath(directoryPath.Trim());
     }
 
+    private static IReadOnlyList<FileExplorerBreadcrumbItemViewModel> BuildBreadcrumbItems(string directoryPath)
+    {
+        if (string.IsNullOrWhiteSpace(directoryPath))
+        {
+            return [new FileExplorerBreadcrumbItemViewModel("No location selected", string.Empty)];
+        }
+
+        var normalizedPath = TryNormalizePath(directoryPath);
+        var root = Path.GetPathRoot(normalizedPath);
+        if (string.IsNullOrWhiteSpace(root))
+        {
+            return [new FileExplorerBreadcrumbItemViewModel(normalizedPath, normalizedPath)];
+        }
+
+        var items = new List<FileExplorerBreadcrumbItemViewModel>
+        {
+            new("This PC", string.Empty),
+            new(
+                root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                root),
+        };
+        var remainder = normalizedPath[root.Length..]
+            .Trim(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+        if (!string.IsNullOrWhiteSpace(remainder))
+        {
+            var currentPath = root;
+            foreach (var segment in remainder.Split(
+                [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                StringSplitOptions.RemoveEmptyEntries))
+            {
+                currentPath = Path.Combine(currentPath, segment);
+                items.Add(new FileExplorerBreadcrumbItemViewModel(segment, currentPath));
+            }
+        }
+
+        return items;
+    }
+
+    private static string GetCurrentFolderName(string directoryPath)
+    {
+        var normalizedPath = TryNormalizePath(directoryPath);
+        var trimmedPath = normalizedPath.TrimEnd(
+            Path.DirectorySeparatorChar,
+            Path.AltDirectorySeparatorChar);
+        var folderName = Path.GetFileName(trimmedPath);
+
+        if (!string.IsNullOrWhiteSpace(folderName))
+        {
+            return folderName;
+        }
+
+        var root = Path.GetPathRoot(normalizedPath)?
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+        return string.IsNullOrWhiteSpace(root) ? "current folder" : root;
+    }
+
+    private static string TryNormalizePath(string directoryPath)
+    {
+        try
+        {
+            return NormalizeDirectoryPath(directoryPath);
+        }
+        catch (Exception)
+        {
+            return directoryPath.Trim();
+        }
+    }
+
     private static bool IsSameDirectory(string left, string right)
     {
         if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
@@ -659,6 +750,8 @@ public sealed class FileExplorerViewModel : ObservableObject
         return path;
     }
 }
+
+public sealed record FileExplorerBreadcrumbItemViewModel(string Name, string Path);
 
 public sealed class FileExplorerItemViewModel : ObservableObject
 {
