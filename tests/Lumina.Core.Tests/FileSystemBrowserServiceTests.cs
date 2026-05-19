@@ -45,6 +45,22 @@ public sealed class FileSystemBrowserServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task LoadDirectoryAsync_AssignsPreviewKindForImageAndVideoFiles()
+    {
+        Directory.CreateDirectory(Path.Combine(_temporaryDirectory, "Media Folder"));
+        await File.WriteAllTextAsync(Path.Combine(_temporaryDirectory, "notes.txt"), "notes");
+        await File.WriteAllTextAsync(Path.Combine(_temporaryDirectory, "photo.JPG"), "image");
+        await File.WriteAllTextAsync(Path.Combine(_temporaryDirectory, "video.MP4"), "video");
+
+        var items = await _service.LoadDirectoryAsync(_temporaryDirectory);
+
+        Assert.Equal(FilePreviewKind.None, items.Single(item => item.Name == "Media Folder").PreviewKind);
+        Assert.Equal(FilePreviewKind.None, items.Single(item => item.Name == "notes.txt").PreviewKind);
+        Assert.Equal(FilePreviewKind.Image, items.Single(item => item.Name == "photo.JPG").PreviewKind);
+        Assert.Equal(FilePreviewKind.Video, items.Single(item => item.Name == "video.MP4").PreviewKind);
+    }
+
+    [Fact]
     public async Task LoadDirectoryAsync_DoesNotRecurseIntoChildFolders()
     {
         var childDirectory = Directory.CreateDirectory(Path.Combine(_temporaryDirectory, "Child"));

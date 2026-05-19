@@ -5,6 +5,43 @@ namespace Lumina.Core.Services;
 
 public sealed class FileSystemBrowserService : IFileBrowserService
 {
+    private static readonly HashSet<string> ImagePreviewExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".avif",
+        ".bmp",
+        ".dib",
+        ".gif",
+        ".heic",
+        ".heif",
+        ".ico",
+        ".jfif",
+        ".jpe",
+        ".jpeg",
+        ".jpg",
+        ".png",
+        ".svg",
+        ".tif",
+        ".tiff",
+        ".webp",
+    };
+
+    private static readonly HashSet<string> VideoPreviewExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".3g2",
+        ".3gp",
+        ".avi",
+        ".m2ts",
+        ".m4v",
+        ".mkv",
+        ".mov",
+        ".mp4",
+        ".mpeg",
+        ".mpg",
+        ".mts",
+        ".webm",
+        ".wmv",
+    };
+
     private static readonly EnumerationOptions EnumerationOptions = new()
     {
         AttributesToSkip = 0,
@@ -287,10 +324,24 @@ public sealed class FileSystemBrowserService : IFileBrowserService
             DisplayName = string.IsNullOrWhiteSpace(displayName) ? name : displayName,
             Path = info.FullName,
             IsDirectory = isDirectory,
+            PreviewKind = isDirectory ? FilePreviewKind.None : ResolvePreviewKind(name),
             Size = isDirectory ? 0 : ((FileInfo)info).Length,
             Modified = new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero),
             Tags = _tagParserService.ParseTagsFromFilename(name),
         };
+    }
+
+    private static FilePreviewKind ResolvePreviewKind(string fileName)
+    {
+        var extension = Path.GetExtension(fileName);
+        if (ImagePreviewExtensions.Contains(extension))
+        {
+            return FilePreviewKind.Image;
+        }
+
+        return VideoPreviewExtensions.Contains(extension)
+            ? FilePreviewKind.Video
+            : FilePreviewKind.None;
     }
 
     private static bool MatchesQuery(FileItem item, string query)

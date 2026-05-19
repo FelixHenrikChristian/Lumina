@@ -479,13 +479,22 @@
                                     <Grid
                                         Margin="0"
                                         Background="{ThemeResource LayerFillColorDefaultBrush}">
+                                        <Image
+                                            HorizontalAlignment="Stretch"
+                                            VerticalAlignment="Stretch"
+                                            IsHitTestVisible="False"
+                                            Source="{Binding ThumbnailSource}"
+                                            Stretch="Uniform"
+                                            Visibility="{Binding ThumbnailVisibility}" />
+
                                         <FontIcon
                                             HorizontalAlignment="Center"
                                             VerticalAlignment="Center"
                                             FontFamily="Segoe Fluent Icons"
                                             FontSize="{Binding ThumbnailIconFontSize}"
                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                            Glyph="{Binding IconGlyph}" />
+                                            Glyph="{Binding IconGlyph}"
+                                            Visibility="{Binding IconVisibility}" />
 
                                         <ItemsControl
                                             Margin="8"

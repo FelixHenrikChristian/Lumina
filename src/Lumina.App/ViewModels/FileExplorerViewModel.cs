@@ -2,7 +2,9 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 
+using Lumina.App.Services;
 using Lumina.Core.Models;
 using Lumina.Core.Services;
 
@@ -15,6 +17,7 @@ public sealed class FileExplorerViewModel : ObservableObject
     private const int DefaultZoomLevelIndex = 2;
 
     private readonly IFileBrowserService _fileBrowserService;
+    private readonly IFileThumbnailService _fileThumbnailService;
     private readonly List<string> _backStack = [];
     private readonly List<string> _forwardStack = [];
 
@@ -28,18 +31,27 @@ public sealed class FileExplorerViewModel : ObservableObject
     private double _thumbnailIconFontSize = CalculateThumbnailIconFontSize(CardWidthZoomLevels[DefaultZoomLevelIndex]);
     private Location? _currentLocation;
     private CancellationTokenSource? _loadCancellation;
+    private CancellationTokenSource? _thumbnailCancellation;
     private FileExplorerItemViewModel? _selectedFile;
     private FileExplorerItemViewModel? _selectionAnchor;
     private int _zoomLevelIndex = DefaultZoomLevelIndex;
 
     public FileExplorerViewModel()
-        : this(new FileSystemBrowserService())
+        : this(new FileSystemBrowserService(), new ShellFileThumbnailService())
     {
     }
 
     public FileExplorerViewModel(IFileBrowserService fileBrowserService)
+        : this(fileBrowserService, new ShellFileThumbnailService())
+    {
+    }
+
+    public FileExplorerViewModel(
+        IFileBrowserService fileBrowserService,
+        IFileThumbnailService fileThumbnailService)
     {
         _fileBrowserService = fileBrowserService;
+        _fileThumbnailService = fileThumbnailService;
     }
 
     public ObservableCollection<FileExplorerItemViewModel> Files { get; } = [];
@@ -148,6 +160,7 @@ public sealed class FileExplorerViewModel : ObservableObject
         CancellationToken cancellationToken = default)
     {
         _loadCancellation?.Cancel();
+        CancelPendingThumbnailLoading();
 
         _currentLocation = location;
         CurrentLocationName = location?.Name ?? string.Empty;
@@ -499,6 +512,7 @@ public sealed class FileExplorerViewModel : ObservableObject
         }
 
         _loadCancellation?.Cancel();
+        CancelPendingThumbnailLoading();
         var loadCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _loadCancellation = loadCancellation;
 
@@ -521,16 +535,24 @@ public sealed class FileExplorerViewModel : ObservableObject
 
             loadCancellation.Token.ThrowIfCancellationRequested();
 
+            var thumbnailItems = new List<FileExplorerItemViewModel>();
             foreach (var file in files)
             {
-                Files.Add(new FileExplorerItemViewModel(
+                var item = new FileExplorerItemViewModel(
                     file,
                     CardWidth,
                     CardHeight,
-                    ThumbnailIconFontSize));
+                    ThumbnailIconFontSize);
+                Files.Add(item);
+
+                if (item.CanLoadThumbnail)
+                {
+                    thumbnailItems.Add(item);
+                }
             }
 
             OnComputedStateChanged();
+            StartThumbnailLoading(thumbnailItems);
         }
         catch (OperationCanceledException) when (loadCancellation.IsCancellationRequested)
         {
@@ -549,6 +571,66 @@ public sealed class FileExplorerViewModel : ObservableObject
 
             loadCancellation.Dispose();
         }
+    }
+
+    private void StartThumbnailLoading(IReadOnlyList<FileExplorerItemViewModel> files)
+    {
+        if (files.Count == 0)
+        {
+            return;
+        }
+
+        var thumbnailCancellation = new CancellationTokenSource();
+        _thumbnailCancellation = thumbnailCancellation;
+        _ = LoadThumbnailsAsync(files, thumbnailCancellation);
+    }
+
+    private async Task LoadThumbnailsAsync(
+        IReadOnlyList<FileExplorerItemViewModel> files,
+        CancellationTokenSource thumbnailCancellation)
+    {
+        try
+        {
+            foreach (var file in files)
+            {
+                thumbnailCancellation.Token.ThrowIfCancellationRequested();
+
+                var thumbnail = await _fileThumbnailService.LoadThumbnailAsync(
+                    file.File,
+                    CalculateThumbnailRequestSize(file.CardWidth),
+                    thumbnailCancellation.Token);
+                thumbnailCancellation.Token.ThrowIfCancellationRequested();
+
+                if (thumbnail is not null)
+                {
+                    file.ThumbnailSource = thumbnail;
+                }
+            }
+        }
+        catch (OperationCanceledException) when (thumbnailCancellation.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            if (_thumbnailCancellation == thumbnailCancellation)
+            {
+                _thumbnailCancellation = null;
+            }
+
+            thumbnailCancellation.Dispose();
+        }
+    }
+
+    private void CancelPendingThumbnailLoading()
+    {
+        var thumbnailCancellation = _thumbnailCancellation;
+        if (thumbnailCancellation is null)
+        {
+            return;
+        }
+
+        _thumbnailCancellation = null;
+        thumbnailCancellation.Cancel();
     }
 
     private void OnComputedStateChanged()
@@ -634,6 +716,11 @@ public sealed class FileExplorerViewModel : ObservableObject
     private static double CalculateThumbnailIconFontSize(double cardWidth)
     {
         return Math.Clamp(Math.Round(cardWidth * 0.22), 40, 78);
+    }
+
+    private static int CalculateThumbnailRequestSize(double cardWidth)
+    {
+        return Math.Clamp((int)Math.Ceiling(cardWidth * 2), 128, 1024);
     }
 
     private static string NormalizeDirectoryPath(string directoryPath)
@@ -759,6 +846,7 @@ public sealed class FileExplorerItemViewModel : ObservableObject
     private double _cardWidth;
     private bool _isFocused;
     private bool _isSelected;
+    private ImageSource? _thumbnailSource;
     private double _thumbnailIconFontSize;
 
     public FileExplorerItemViewModel(
@@ -818,11 +906,32 @@ public sealed class FileExplorerItemViewModel : ObservableObject
         }
     }
 
+    public ImageSource? ThumbnailSource
+    {
+        get => _thumbnailSource;
+        set
+        {
+            if (SetProperty(ref _thumbnailSource, value))
+            {
+                OnPropertyChanged(nameof(ThumbnailVisibility));
+                OnPropertyChanged(nameof(IconVisibility));
+            }
+        }
+    }
+
     public Visibility SelectionVisibility => IsSelected
         ? Visibility.Visible
         : Visibility.Collapsed;
 
     public Visibility FocusVisibility => IsFocused && !IsSelected
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public Visibility ThumbnailVisibility => ThumbnailSource is null
+        ? Visibility.Collapsed
+        : Visibility.Visible;
+
+    public Visibility IconVisibility => ThumbnailSource is null
         ? Visibility.Visible
         : Visibility.Collapsed;
 
@@ -836,6 +945,8 @@ public sealed class FileExplorerItemViewModel : ObservableObject
 
     public bool IsDirectory => File.IsDirectory;
 
+    public bool CanLoadThumbnail => !IsDirectory && File.PreviewKind != FilePreviewKind.None;
+
     public IReadOnlyList<string> Tags => File.Tags;
 
     public Visibility TagVisibility => Tags.Count > 0
@@ -844,7 +955,7 @@ public sealed class FileExplorerItemViewModel : ObservableObject
 
     public string IconGlyph => IsDirectory
         ? "\uE8B7"
-        : ResolveFileGlyph(File.Name);
+        : ResolveFileGlyph(File);
 
     public string DetailText => IsDirectory
         ? "Folder"
@@ -868,12 +979,20 @@ public sealed class FileExplorerItemViewModel : ObservableObject
         ThumbnailIconFontSize = thumbnailIconFontSize;
     }
 
-    private static string ResolveFileGlyph(string fileName)
+    private static string ResolveFileGlyph(FileItem file)
     {
-        return System.IO.Path.GetExtension(fileName).ToLowerInvariant() switch
+        if (file.PreviewKind == FilePreviewKind.Image)
         {
-            ".bmp" or ".gif" or ".heic" or ".jpeg" or ".jpg" or ".png" or ".webp" => "\uEB9F",
-            ".avi" or ".mkv" or ".mov" or ".mp4" or ".webm" or ".wmv" => "\uE8B2",
+            return "\uEB9F";
+        }
+
+        if (file.PreviewKind == FilePreviewKind.Video)
+        {
+            return "\uE8B2";
+        }
+
+        return System.IO.Path.GetExtension(file.Name).ToLowerInvariant() switch
+        {
             ".flac" or ".m4a" or ".mp3" or ".wav" or ".wma" => "\uE8D6",
             ".doc" or ".docx" or ".md" or ".pdf" or ".rtf" or ".txt" => "\uE8A5",
             ".7z" or ".rar" or ".zip" => "\uF012",

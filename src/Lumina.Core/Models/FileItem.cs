@@ -10,6 +10,8 @@ public sealed record FileItem
 
     public bool IsDirectory { get; init; }
 
+    public FilePreviewKind PreviewKind { get; init; }
+
     public long Size { get; init; }
 
     public DateTimeOffset Modified { get; init; }
