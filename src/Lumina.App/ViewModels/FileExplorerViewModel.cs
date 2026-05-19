@@ -845,7 +845,9 @@ public sealed class FileExplorerItemViewModel : ObservableObject
     private double _cardHeight;
     private double _cardWidth;
     private bool _isFocused;
+    private bool _isRenaming;
     private bool _isSelected;
+    private string _renameText = string.Empty;
     private ImageSource? _thumbnailSource;
     private double _thumbnailIconFontSize;
 
@@ -858,6 +860,7 @@ public sealed class FileExplorerItemViewModel : ObservableObject
         File = file;
         _cardWidth = cardWidth;
         _cardHeight = cardHeight;
+        _renameText = Name;
         _thumbnailIconFontSize = thumbnailIconFontSize;
     }
 
@@ -906,6 +909,25 @@ public sealed class FileExplorerItemViewModel : ObservableObject
         }
     }
 
+    public bool IsRenaming
+    {
+        get => _isRenaming;
+        private set
+        {
+            if (SetProperty(ref _isRenaming, value))
+            {
+                OnPropertyChanged(nameof(DisplayInfoVisibility));
+                OnPropertyChanged(nameof(RenameEditorVisibility));
+            }
+        }
+    }
+
+    public string RenameText
+    {
+        get => _renameText;
+        set => SetProperty(ref _renameText, value);
+    }
+
     public ImageSource? ThumbnailSource
     {
         get => _thumbnailSource;
@@ -924,6 +946,14 @@ public sealed class FileExplorerItemViewModel : ObservableObject
         : Visibility.Collapsed;
 
     public Visibility FocusVisibility => IsFocused && !IsSelected
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public Visibility DisplayInfoVisibility => IsRenaming
+        ? Visibility.Collapsed
+        : Visibility.Visible;
+
+    public Visibility RenameEditorVisibility => IsRenaming
         ? Visibility.Visible
         : Visibility.Collapsed;
 
@@ -977,6 +1007,42 @@ public sealed class FileExplorerItemViewModel : ObservableObject
         CardWidth = cardWidth;
         CardHeight = cardHeight;
         ThumbnailIconFontSize = thumbnailIconFontSize;
+    }
+
+    public void BeginRename()
+    {
+        RenameText = Name;
+        IsRenaming = true;
+    }
+
+    public void CancelRename()
+    {
+        RenameText = Name;
+        IsRenaming = false;
+    }
+
+    public void EndRename()
+    {
+        IsRenaming = false;
+    }
+
+    public string BuildFileSystemNameFromDisplayName(string displayName)
+    {
+        var trimmedDisplayName = displayName.Trim();
+        if (trimmedDisplayName.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var currentDisplayName = Name;
+        if (string.IsNullOrEmpty(currentDisplayName) ||
+            !FileSystemName.EndsWith(currentDisplayName, StringComparison.Ordinal))
+        {
+            return trimmedDisplayName;
+        }
+
+        var tagPrefix = FileSystemName[..^currentDisplayName.Length];
+        return tagPrefix + trimmedDisplayName;
     }
 
     private static string ResolveFileGlyph(FileItem file)

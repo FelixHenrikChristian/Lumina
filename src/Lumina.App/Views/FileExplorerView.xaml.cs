@@ -42,6 +42,8 @@ public sealed partial class FileExplorerView : UserControl
     private FileClipboardState? _fileClipboard;
     private CancellationTokenSource? _searchDebounceCancellation;
     private TextBox? _searchTextBox;
+    private FileExplorerItemViewModel? _renamingFile;
+    private bool _isInlineRenameCommitInProgress;
     private bool _isSearchTextComposing;
 
     public FileExplorerView()
@@ -71,6 +73,7 @@ public sealed partial class FileExplorerView : UserControl
         LocationSelectionEvents.SelectionChanged -= LocationSelectionEvents_SelectionChanged;
         Clipboard.ContentChanged -= Clipboard_ContentChanged;
         CancelPendingSearch();
+        CancelInlineRename();
         DetachSearchTextBoxEvents();
     }
 
@@ -94,6 +97,7 @@ public sealed partial class FileExplorerView : UserControl
         LocationSelectionChangedEventArgs e)
     {
         CancelPendingSearch();
+        CancelInlineRename();
         _isSearchTextComposing = false;
         await ViewModel.OpenLocationAsync(e.Location);
         ScrollToTop();
@@ -167,6 +171,11 @@ public sealed partial class FileExplorerView : UserControl
 
     private void FileCard_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        if (IsWithinInlineRenameBox(e.OriginalSource))
+        {
+            return;
+        }
+
         if (GetFileFromSender(sender) is not { } file)
         {
             return;
@@ -190,6 +199,12 @@ public sealed partial class FileExplorerView : UserControl
 
     private async void FileCard_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
+        if (IsWithinInlineRenameBox(e.OriginalSource))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (GetFileFromSender(sender) is not { } file)
         {
             return;
@@ -202,6 +217,11 @@ public sealed partial class FileExplorerView : UserControl
 
     private void FileGridScrollViewer_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (IsWithinInlineRenameBox(e.OriginalSource))
+        {
+            return;
+        }
+
         var isAltDown = e.KeyStatus.IsMenuKeyDown || IsKeyDown(VirtualKey.Menu);
         var isControlDown = IsKeyDown(VirtualKey.Control);
         var isShiftDown = IsKeyDown(VirtualKey.Shift);
@@ -470,6 +490,11 @@ public sealed partial class FileExplorerView : UserControl
 
     private void FileGridScrollViewer_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        if (IsWithinInlineRenameBox(e.OriginalSource))
+        {
+            return;
+        }
+
         FileGridScrollViewer.Focus(FocusState.Pointer);
 
         if (IsWithinFileCard(e.OriginalSource))
@@ -543,25 +568,173 @@ public sealed partial class FileExplorerView : UserControl
         _searchTextBox?.SelectAll();
     }
 
-    private async void RenameFocusedFile()
+    private void RenameFocusedFile()
     {
         if (ViewModel.SelectedFile is not { } file)
         {
             return;
         }
 
-        var newName = await PromptForFileNameAsync(file);
-        if (string.IsNullOrWhiteSpace(newName) ||
-            string.Equals(file.FileSystemName, newName, StringComparison.Ordinal))
+        BeginInlineRename(file);
+    }
+
+    private void BeginInlineRename(FileExplorerItemViewModel file)
+    {
+        if (_isInlineRenameCommitInProgress)
         {
-            FileGridScrollViewer.Focus(FocusState.Programmatic);
             return;
         }
 
-        await RunFileOperationAsync(
-            () => ViewModel.RenameFileAsync(file, newName),
-            "Rename failed");
-        FileGridScrollViewer.Focus(FocusState.Programmatic);
+        CancelInlineRename();
+        ViewModel.SelectFile(file);
+        _renamingFile = file;
+        file.BeginRename();
+        FocusInlineRenameBox(file);
+    }
+
+    private void CancelInlineRename()
+    {
+        if (_renamingFile is not { } file)
+        {
+            return;
+        }
+
+        _renamingFile = null;
+        file.CancelRename();
+    }
+
+    private void EndInlineRename(FileExplorerItemViewModel file)
+    {
+        if (ReferenceEquals(_renamingFile, file))
+        {
+            _renamingFile = null;
+        }
+
+        file.EndRename();
+    }
+
+    private void InlineRenameBox_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not TextBox textBox)
+        {
+            return;
+        }
+
+        if (textBox.DataContext is FileExplorerItemViewModel file &&
+            ReferenceEquals(_renamingFile, file))
+        {
+            FocusInlineRenameBox(file);
+        }
+    }
+
+    private async void InlineRenameBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (sender is not TextBox { DataContext: FileExplorerItemViewModel file } textBox ||
+            !ReferenceEquals(_renamingFile, file))
+        {
+            return;
+        }
+
+        switch (e.Key)
+        {
+            case VirtualKey.Enter:
+                e.Handled = true;
+                await CommitInlineRenameAsync(file, textBox.Text, restoreGridFocus: true);
+                break;
+            case VirtualKey.Escape:
+                e.Handled = true;
+                CancelInlineRename();
+                FileGridScrollViewer.Focus(FocusState.Programmatic);
+                break;
+        }
+    }
+
+    private async void InlineRenameBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (_isInlineRenameCommitInProgress ||
+            sender is not TextBox { DataContext: FileExplorerItemViewModel file } textBox ||
+            !ReferenceEquals(_renamingFile, file))
+        {
+            return;
+        }
+
+        await CommitInlineRenameAsync(file, textBox.Text, restoreGridFocus: false);
+    }
+
+    private async Task CommitInlineRenameAsync(
+        FileExplorerItemViewModel file,
+        string requestedName,
+        bool restoreGridFocus)
+    {
+        if (_isInlineRenameCommitInProgress || !ReferenceEquals(_renamingFile, file))
+        {
+            return;
+        }
+
+        _isInlineRenameCommitInProgress = true;
+        var newDisplayName = requestedName.Trim();
+
+        try
+        {
+            if (newDisplayName.Length == 0)
+            {
+                await ShowFileOperationErrorDialogAsync(
+                    "Rename failed",
+                    "The name cannot be empty.");
+                FocusInlineRenameBox(file);
+                return;
+            }
+
+            var newFileSystemName = file.BuildFileSystemNameFromDisplayName(newDisplayName);
+            if (string.Equals(file.FileSystemName, newFileSystemName, StringComparison.Ordinal))
+            {
+                EndInlineRename(file);
+                if (restoreGridFocus)
+                {
+                    FileGridScrollViewer.Focus(FocusState.Programmatic);
+                }
+
+                return;
+            }
+
+            await ViewModel.RenameFileAsync(file, newFileSystemName);
+            EndInlineRename(file);
+            if (restoreGridFocus)
+            {
+                FileGridScrollViewer.Focus(FocusState.Programmatic);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            EndInlineRename(file);
+        }
+        catch (Exception ex)
+        {
+            await ShowFileOperationErrorDialogAsync("Rename failed", ex.Message);
+            if (ReferenceEquals(_renamingFile, file))
+            {
+                FocusInlineRenameBox(file);
+            }
+        }
+        finally
+        {
+            _isInlineRenameCommitInProgress = false;
+        }
+    }
+
+    private void FocusInlineRenameBox(FileExplorerItemViewModel file)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            var textBox = FindInlineRenameTextBox(file);
+            if (textBox is null)
+            {
+                return;
+            }
+
+            textBox.Focus(FocusState.Programmatic);
+            textBox.Select(0, GetRenameSelectionLength(file));
+        });
     }
 
     private async void DeleteSelectedFiles(bool permanently)
@@ -759,45 +932,6 @@ public sealed partial class FileExplorerView : UserControl
         await dialog.ShowAsync();
     }
 
-    private async Task<string?> PromptForFileNameAsync(FileExplorerItemViewModel file)
-    {
-        var nameBox = new TextBox
-        {
-            Header = "Name",
-            PlaceholderText = "Enter a file or folder name",
-            Text = file.FileSystemName,
-        };
-
-        var dialog = new ContentDialog
-        {
-            XamlRoot = XamlRoot,
-            Title = "Rename",
-            PrimaryButtonText = "Rename",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
-            Content = nameBox,
-        };
-
-        void UpdatePrimaryButtonState()
-        {
-            dialog.IsPrimaryButtonEnabled = !string.IsNullOrWhiteSpace(nameBox.Text);
-        }
-
-        nameBox.TextChanged += (_, _) => UpdatePrimaryButtonState();
-        dialog.Opened += (_, _) =>
-        {
-            UpdatePrimaryButtonState();
-            nameBox.Focus(FocusState.Programmatic);
-
-            var selectionLength = GetRenameSelectionLength(file);
-            nameBox.Select(0, selectionLength);
-        };
-
-        var result = await dialog.ShowAsync();
-
-        return result == ContentDialogResult.Primary ? nameBox.Text.Trim() : null;
-    }
-
     private async Task<bool> ConfirmPermanentDeleteAsync(
         IReadOnlyList<FileExplorerItemViewModel> files)
     {
@@ -970,6 +1104,14 @@ public sealed partial class FileExplorerView : UserControl
             : null;
     }
 
+    private TextBox? FindInlineRenameTextBox(FileExplorerItemViewModel file)
+    {
+        return FindDescendant<TextBox>(
+            FilesItemsControl,
+            textBox => textBox.Name == "InlineRenameBox" &&
+                ReferenceEquals(textBox.DataContext, file));
+    }
+
     private static SelectionNavigationMode ResolveSelectionNavigationMode(
         bool isShiftDown,
         bool isControlDown)
@@ -991,15 +1133,16 @@ public sealed partial class FileExplorerView : UserControl
 
     private static int GetRenameSelectionLength(FileExplorerItemViewModel file)
     {
+        var renameText = file.RenameText;
         if (file.IsDirectory)
         {
-            return file.FileSystemName.Length;
+            return renameText.Length;
         }
 
-        var extensionLength = Path.GetExtension(file.FileSystemName).Length;
-        var selectionLength = file.FileSystemName.Length - extensionLength;
+        var extensionLength = Path.GetExtension(renameText).Length;
+        var selectionLength = renameText.Length - extensionLength;
 
-        return selectionLength > 0 ? selectionLength : file.FileSystemName.Length;
+        return selectionLength > 0 ? selectionLength : renameText.Length;
     }
 
     private static bool PathExists(string path)
@@ -1044,16 +1187,24 @@ public sealed partial class FileExplorerView : UserControl
     private static T? FindDescendant<T>(DependencyObject parent)
         where T : DependencyObject
     {
+        return FindDescendant<T>(parent, _ => true);
+    }
+
+    private static T? FindDescendant<T>(
+        DependencyObject parent,
+        Func<T, bool> predicate)
+        where T : DependencyObject
+    {
         var childCount = VisualTreeHelper.GetChildrenCount(parent);
         for (var i = 0; i < childCount; i++)
         {
             var child = VisualTreeHelper.GetChild(parent, i);
-            if (child is T match)
+            if (child is T match && predicate(match))
             {
                 return match;
             }
 
-            var descendant = FindDescendant<T>(child);
+            var descendant = FindDescendant(child, predicate);
             if (descendant is not null)
             {
                 return descendant;
@@ -1065,6 +1216,22 @@ public sealed partial class FileExplorerView : UserControl
 
     [DllImport("user32.dll")]
     private static extern short GetKeyState(int virtualKey);
+
+    private static bool IsWithinInlineRenameBox(object? source)
+    {
+        var dependencyObject = source as DependencyObject;
+        while (dependencyObject is not null)
+        {
+            if (dependencyObject is TextBox { Name: "InlineRenameBox" })
+            {
+                return true;
+            }
+
+            dependencyObject = VisualTreeHelper.GetParent(dependencyObject);
+        }
+
+        return false;
+    }
 
     private static bool IsWithinFileCard(object? source)
     {

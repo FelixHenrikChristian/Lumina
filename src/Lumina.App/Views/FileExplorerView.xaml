@@ -100,6 +100,20 @@
             <Setter Property="HorizontalAlignment" Value="Left" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
+
+        <Style x:Key="InlineRenameTextBoxStyle" TargetType="TextBox">
+            <Setter Property="Height" Value="20" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="2,0" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Background" Value="{ThemeResource TextControlBackground}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="UseSystemFocusVisuals" Value="False" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
     </UserControl.Resources>
 
     <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
@@ -446,6 +460,7 @@
                 VerticalScrollBarVisibility="Auto"
                 Visibility="{Binding FileGridVisibility}">
                 <ItemsControl
+                    x:Name="FilesItemsControl"
                     HorizontalAlignment="Stretch"
                     ItemsSource="{Binding Files}">
                     <ItemsControl.ItemsPanel>
@@ -541,7 +556,8 @@
                                             MaxLines="1"
                                             Text="{Binding Name}"
                                             TextTrimming="CharacterEllipsis"
-                                            TextWrapping="NoWrap" />
+                                            TextWrapping="NoWrap"
+                                            Visibility="{Binding DisplayInfoVisibility}" />
 
                                         <Grid
                                             Grid.Row="1"
@@ -567,6 +583,18 @@
                                                 Text="{Binding ModifiedText}"
                                                 TextTrimming="CharacterEllipsis" />
                                         </Grid>
+
+                                        <TextBox
+                                            x:Name="InlineRenameBox"
+                                            Margin="-3,-2,-3,0"
+                                            VerticalAlignment="Top"
+                                            AcceptsReturn="False"
+                                            KeyDown="InlineRenameBox_KeyDown"
+                                            Loaded="InlineRenameBox_Loaded"
+                                            LostFocus="InlineRenameBox_LostFocus"
+                                            Style="{StaticResource InlineRenameTextBoxStyle}"
+                                            Text="{Binding RenameText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                            Visibility="{Binding RenameEditorVisibility}" />
                                     </Grid>
 
                                     <Border
