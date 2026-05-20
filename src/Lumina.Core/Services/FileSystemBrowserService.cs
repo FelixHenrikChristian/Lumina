@@ -72,10 +72,22 @@ public sealed class FileSystemBrowserService : IFileBrowserService
         string directoryPath,
         CancellationToken cancellationToken = default)
     {
+        return LoadDirectoryAsync(
+            directoryPath,
+            FileSortOptions.Default,
+            cancellationToken);
+    }
+
+    public Task<IReadOnlyList<FileItem>> LoadDirectoryAsync(
+        string directoryPath,
+        FileSortOptions sortOptions,
+        CancellationToken cancellationToken = default)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(directoryPath);
+        ArgumentNullException.ThrowIfNull(sortOptions);
 
         return Task.Run(
-            () => LoadDirectory(directoryPath.Trim(), cancellationToken),
+            () => LoadDirectory(directoryPath.Trim(), sortOptions, cancellationToken),
             cancellationToken);
     }
 
@@ -84,11 +96,25 @@ public sealed class FileSystemBrowserService : IFileBrowserService
         string query,
         CancellationToken cancellationToken = default)
     {
+        return SearchDirectoryAsync(
+            directoryPath,
+            query,
+            FileSortOptions.Default,
+            cancellationToken);
+    }
+
+    public Task<IReadOnlyList<FileItem>> SearchDirectoryAsync(
+        string directoryPath,
+        string query,
+        FileSortOptions sortOptions,
+        CancellationToken cancellationToken = default)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(directoryPath);
         ArgumentNullException.ThrowIfNull(query);
+        ArgumentNullException.ThrowIfNull(sortOptions);
 
         return Task.Run(
-            () => SearchDirectory(directoryPath.Trim(), query.Trim(), cancellationToken),
+            () => SearchDirectory(directoryPath.Trim(), query.Trim(), sortOptions, cancellationToken),
             cancellationToken);
     }
 
@@ -158,6 +184,7 @@ public sealed class FileSystemBrowserService : IFileBrowserService
 
     private IReadOnlyList<FileItem> LoadDirectory(
         string directoryPath,
+        FileSortOptions sortOptions,
         CancellationToken cancellationToken)
     {
         var directory = new DirectoryInfo(directoryPath);
@@ -166,27 +193,27 @@ public sealed class FileSystemBrowserService : IFileBrowserService
             throw new DirectoryNotFoundException($"Directory not found: {directoryPath}");
         }
 
-        return directory
-            .EnumerateFileSystemInfos("*", EnumerationOptions)
-            .Select(info =>
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                return CreateFileItem(info);
-            })
-            .OrderByDescending(item => item.IsDirectory)
-            .ThenBy(item => item.DisplayName, StringComparer.CurrentCultureIgnoreCase)
-            .ThenBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase)
-            .ToList();
+        return SortFileItems(
+            directory
+                .EnumerateFileSystemInfos("*", EnumerationOptions)
+                .Select(info =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return CreateFileItem(info);
+                }),
+            sortOptions,
+            includePathTieBreaker: false);
     }
 
     private IReadOnlyList<FileItem> SearchDirectory(
         string directoryPath,
         string query,
+        FileSortOptions sortOptions,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(query))
         {
-            return LoadDirectory(directoryPath, cancellationToken);
+            return LoadDirectory(directoryPath, sortOptions, cancellationToken);
         }
 
         var directory = new DirectoryInfo(directoryPath);
@@ -195,19 +222,17 @@ public sealed class FileSystemBrowserService : IFileBrowserService
             throw new DirectoryNotFoundException($"Directory not found: {directoryPath}");
         }
 
-        return directory
-            .EnumerateFileSystemInfos("*", RecursiveEnumerationOptions)
-            .Select(info =>
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                return CreateFileItem(info);
-            })
-            .Where(item => MatchesQuery(item, query))
-            .OrderByDescending(item => item.IsDirectory)
-            .ThenBy(item => item.DisplayName, StringComparer.CurrentCultureIgnoreCase)
-            .ThenBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase)
-            .ThenBy(item => item.Path, StringComparer.CurrentCultureIgnoreCase)
-            .ToList();
+        return SortFileItems(
+            directory
+                .EnumerateFileSystemInfos("*", RecursiveEnumerationOptions)
+                .Select(info =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return CreateFileItem(info);
+                })
+                .Where(item => MatchesQuery(item, query)),
+            sortOptions,
+            includePathTieBreaker: true);
     }
 
     private string CreateDirectory(
@@ -358,6 +383,7 @@ public sealed class FileSystemBrowserService : IFileBrowserService
             PreviewKind = isDirectory ? FilePreviewKind.None : ResolvePreviewKind(name),
             Size = isDirectory ? 0 : ((FileInfo)info).Length,
             Modified = new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero),
+            Created = new DateTimeOffset(info.CreationTimeUtc, TimeSpan.Zero),
             Tags = _tagParserService.ParseTagsFromFilename(name),
         };
     }
@@ -380,6 +406,102 @@ public sealed class FileSystemBrowserService : IFileBrowserService
         return item.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase) ||
             item.DisplayName.Contains(query, StringComparison.CurrentCultureIgnoreCase) ||
             item.Tags.Any(tag => tag.Contains(query, StringComparison.CurrentCultureIgnoreCase));
+    }
+
+    private static IReadOnlyList<FileItem> SortFileItems(
+        IEnumerable<FileItem> items,
+        FileSortOptions sortOptions,
+        bool includePathTieBreaker)
+    {
+        var ordered = items.OrderByDescending(item => item.IsDirectory);
+        ordered = sortOptions.Field switch
+        {
+            FileSortField.Name => ThenByString(
+                ThenByString(
+                    ordered,
+                    sortOptions.Direction,
+                    item => item.DisplayName),
+                sortOptions.Direction,
+                item => item.Name),
+            FileSortField.Modified => ThenByDate(
+                ordered,
+                sortOptions.Direction,
+                item => item.Modified),
+            FileSortField.Type => ThenByString(
+                ordered,
+                sortOptions.Direction,
+                GetFileTypeSortKey),
+            FileSortField.Size => ThenByLong(
+                ordered,
+                sortOptions.Direction,
+                item => item.Size),
+            FileSortField.Created => ThenByDate(
+                ordered,
+                sortOptions.Direction,
+                item => item.Created),
+            _ => ThenByString(
+                ordered,
+                sortOptions.Direction,
+                item => item.DisplayName),
+        };
+
+        if (sortOptions.Field != FileSortField.Name)
+        {
+            ordered = ordered
+                .ThenBy(item => item.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase);
+        }
+
+        if (includePathTieBreaker)
+        {
+            ordered = ordered.ThenBy(item => item.Path, StringComparer.CurrentCultureIgnoreCase);
+        }
+
+        return ordered.ToList();
+    }
+
+    private static IOrderedEnumerable<FileItem> ThenByString(
+        IOrderedEnumerable<FileItem> items,
+        FileSortDirection direction,
+        Func<FileItem, string> keySelector)
+    {
+        return direction == FileSortDirection.Descending
+            ? items.ThenByDescending(keySelector, StringComparer.CurrentCultureIgnoreCase)
+            : items.ThenBy(keySelector, StringComparer.CurrentCultureIgnoreCase);
+    }
+
+    private static IOrderedEnumerable<FileItem> ThenByLong(
+        IOrderedEnumerable<FileItem> items,
+        FileSortDirection direction,
+        Func<FileItem, long> keySelector)
+    {
+        return direction == FileSortDirection.Descending
+            ? items.ThenByDescending(keySelector)
+            : items.ThenBy(keySelector);
+    }
+
+    private static IOrderedEnumerable<FileItem> ThenByDate(
+        IOrderedEnumerable<FileItem> items,
+        FileSortDirection direction,
+        Func<FileItem, DateTimeOffset> keySelector)
+    {
+        return direction == FileSortDirection.Descending
+            ? items.ThenByDescending(keySelector)
+            : items.ThenBy(keySelector);
+    }
+
+    private static string GetFileTypeSortKey(FileItem item)
+    {
+        if (item.IsDirectory)
+        {
+            return "folder";
+        }
+
+        var extension = Path.GetExtension(item.Name).TrimStart('.');
+
+        return string.IsNullOrWhiteSpace(extension)
+            ? string.Empty
+            : extension;
     }
 
     private static void MoveDirectory(string sourcePath, string destinationPath)

@@ -35,6 +35,7 @@ public sealed class FileExplorerViewModel : ObservableObject
     private CancellationTokenSource? _thumbnailCancellation;
     private FileExplorerItemViewModel? _selectedFile;
     private FileExplorerItemViewModel? _selectionAnchor;
+    private FileSortOptions _sortOptions = FileSortOptions.Default;
     private int _zoomLevelIndex = DefaultZoomLevelIndex;
 
     public FileExplorerViewModel()
@@ -127,6 +128,8 @@ public sealed class FileExplorerViewModel : ObservableObject
 
     public bool CanUseSelectedFileCommands => CanUseFolderCommands && SelectedFile is not null;
 
+    public bool CanSort => CanUseFolderCommands;
+
     public bool HasFiles => Files.Count > 0;
 
     public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
@@ -155,6 +158,10 @@ public sealed class FileExplorerViewModel : ObservableObject
         get => _searchQuery;
         set => SetProperty(ref _searchQuery, value);
     }
+
+    public FileSortField SortField => _sortOptions.Field;
+
+    public FileSortDirection SortDirection => _sortOptions.Direction;
 
     public async Task OpenLocationAsync(
         Location? location,
@@ -426,6 +433,24 @@ public sealed class FileExplorerViewModel : ObservableObject
         }
     }
 
+    public Task SortByAsync(
+        FileSortField sortField,
+        CancellationToken cancellationToken = default)
+    {
+        return ApplySortOptionsAsync(
+            _sortOptions with { Field = sortField },
+            cancellationToken);
+    }
+
+    public Task SortDirectionAsync(
+        FileSortDirection sortDirection,
+        CancellationToken cancellationToken = default)
+    {
+        return ApplySortOptionsAsync(
+            _sortOptions with { Direction = sortDirection },
+            cancellationToken);
+    }
+
     public async Task RenameFileAsync(
         FileExplorerItemViewModel file,
         string newName,
@@ -547,10 +572,12 @@ public sealed class FileExplorerViewModel : ObservableObject
             var files = string.IsNullOrWhiteSpace(SearchQuery)
                 ? await _fileBrowserService.LoadDirectoryAsync(
                     CurrentPath,
+                    _sortOptions,
                     loadCancellation.Token)
                 : await _fileBrowserService.SearchDirectoryAsync(
                     CurrentPath,
                     SearchQuery,
+                    _sortOptions,
                     loadCancellation.Token);
 
             loadCancellation.Token.ThrowIfCancellationRequested();
@@ -662,6 +689,7 @@ public sealed class FileExplorerViewModel : ObservableObject
         OnPropertyChanged(nameof(CanNavigateToParent));
         OnPropertyChanged(nameof(CanUseFolderCommands));
         OnPropertyChanged(nameof(CanUseSelectedFileCommands));
+        OnPropertyChanged(nameof(CanSort));
         OnPropertyChanged(nameof(BreadcrumbItems));
         OnPropertyChanged(nameof(SearchPlaceholderText));
         OnPropertyChanged(nameof(HasFiles));
@@ -677,6 +705,27 @@ public sealed class FileExplorerViewModel : ObservableObject
         IReadOnlyList<string> selectedPaths,
         CancellationToken cancellationToken)
     {
+        await LoadCurrentDirectoryAsync(cancellationToken);
+        SelectFilesByPaths(selectedPaths);
+    }
+
+    private async Task ApplySortOptionsAsync(
+        FileSortOptions sortOptions,
+        CancellationToken cancellationToken)
+    {
+        if (_sortOptions == sortOptions)
+        {
+            return;
+        }
+
+        var selectedPaths = GetSelectedFilesOrFocusedFile()
+            .Select(file => file.Path)
+            .ToList();
+
+        _sortOptions = sortOptions;
+        OnPropertyChanged(nameof(SortField));
+        OnPropertyChanged(nameof(SortDirection));
+
         await LoadCurrentDirectoryAsync(cancellationToken);
         SelectFilesByPaths(selectedPaths);
     }

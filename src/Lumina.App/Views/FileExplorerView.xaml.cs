@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.ApplicationModel.DataTransfer;
@@ -172,6 +173,44 @@ public sealed partial class FileExplorerView : UserControl
     private void DeleteButton_Click(object sender, RoutedEventArgs e)
     {
         DeleteSelectedFiles(permanently: false);
+    }
+
+    private void SortButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement anchor || !ViewModel.CanSort)
+        {
+            return;
+        }
+
+        CreateSortMenuFlyout().ShowAt(anchor);
+    }
+
+    private async void SortFieldMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuFlyoutItem { Tag: FileSortField sortField } ||
+            !ViewModel.CanSort)
+        {
+            return;
+        }
+
+        CancelInlineRename();
+        await ViewModel.SortByAsync(sortField);
+        ScrollToTop();
+        FileGridScrollViewer.Focus(FocusState.Programmatic);
+    }
+
+    private async void SortDirectionMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuFlyoutItem { Tag: FileSortDirection sortDirection } ||
+            !ViewModel.CanSort)
+        {
+            return;
+        }
+
+        CancelInlineRename();
+        await ViewModel.SortDirectionAsync(sortDirection);
+        ScrollToTop();
+        FileGridScrollViewer.Focus(FocusState.Programmatic);
     }
 
     private void FileCard_PointerPressed(object sender, PointerRoutedEventArgs e)
@@ -1026,6 +1065,71 @@ public sealed partial class FileExplorerView : UserControl
         };
 
         await dialog.ShowAsync();
+    }
+
+    private MenuFlyout CreateSortMenuFlyout()
+    {
+        var flyout = new MenuFlyout
+        {
+            Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft,
+        };
+
+        flyout.Items.Add(CreateSortFieldItem(FileSortField.Name, "Name"));
+        flyout.Items.Add(CreateSortFieldItem(FileSortField.Modified, "Date modified"));
+        flyout.Items.Add(CreateSortFieldItem(FileSortField.Type, "Type"));
+
+        var moreItem = new MenuFlyoutSubItem
+        {
+            Text = "More",
+        };
+        moreItem.Items.Add(CreateSortFieldItem(FileSortField.Size, "Size"));
+        moreItem.Items.Add(CreateSortFieldItem(FileSortField.Created, "Date created"));
+        flyout.Items.Add(moreItem);
+
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        flyout.Items.Add(CreateSortDirectionItem(FileSortDirection.Ascending, "Ascending"));
+        flyout.Items.Add(CreateSortDirectionItem(FileSortDirection.Descending, "Descending"));
+
+        return flyout;
+    }
+
+    private MenuFlyoutItem CreateSortFieldItem(FileSortField sortField, string text)
+    {
+        var item = new MenuFlyoutItem
+        {
+            Text = text,
+            Tag = sortField,
+            Icon = CreateMenuSelectionIcon(ViewModel.SortField == sortField),
+        };
+        item.Click += SortFieldMenuItem_Click;
+
+        return item;
+    }
+
+    private MenuFlyoutItem CreateSortDirectionItem(
+        FileSortDirection sortDirection,
+        string text)
+    {
+        var item = new MenuFlyoutItem
+        {
+            Text = text,
+            Tag = sortDirection,
+            Icon = CreateMenuSelectionIcon(ViewModel.SortDirection == sortDirection),
+        };
+        item.Click += SortDirectionMenuItem_Click;
+
+        return item;
+    }
+
+    private static IconElement CreateMenuSelectionIcon(bool isSelected)
+    {
+        return new FontIcon
+        {
+            FontFamily = new FontFamily("Segoe Fluent Icons"),
+            FontSize = 12,
+            Glyph = "\uE73E",
+            Opacity = isSelected ? 1 : 0,
+        };
     }
 
     private async Task SetFileClipboardAsync(FileClipboardOperation operation)

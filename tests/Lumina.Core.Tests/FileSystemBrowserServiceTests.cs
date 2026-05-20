@@ -42,6 +42,60 @@ public sealed class FileSystemBrowserServiceTests : IDisposable
         Assert.Equal(["work", "urgent"], item.Tags);
         Assert.Equal(filePath, item.Path);
         Assert.Equal(new FileInfo(filePath).Length, item.Size);
+        Assert.Equal(
+            new DateTimeOffset(File.GetCreationTimeUtc(filePath), TimeSpan.Zero),
+            item.Created);
+    }
+
+    [Fact]
+    public async Task LoadDirectoryAsync_SortBySizeDescendingKeepsFoldersFirst()
+    {
+        Directory.CreateDirectory(Path.Combine(_temporaryDirectory, "Folder"));
+        await File.WriteAllTextAsync(Path.Combine(_temporaryDirectory, "small.bin"), "1");
+        await File.WriteAllTextAsync(Path.Combine(_temporaryDirectory, "large.bin"), "12345");
+
+        var items = await _service.LoadDirectoryAsync(
+            _temporaryDirectory,
+            new FileSortOptions(FileSortField.Size, FileSortDirection.Descending));
+
+        Assert.Equal(
+            ["Folder", "large.bin", "small.bin"],
+            items.Select(item => item.Name));
+    }
+
+    [Fact]
+    public async Task LoadDirectoryAsync_SortByTypeUsesNameAsTieBreaker()
+    {
+        await File.WriteAllTextAsync(Path.Combine(_temporaryDirectory, "[tag] zeta.txt"), "a");
+        await File.WriteAllTextAsync(Path.Combine(_temporaryDirectory, "alpha.jpg"), "a");
+        await File.WriteAllTextAsync(Path.Combine(_temporaryDirectory, "beta.txt"), "a");
+
+        var items = await _service.LoadDirectoryAsync(
+            _temporaryDirectory,
+            new FileSortOptions(FileSortField.Type, FileSortDirection.Ascending));
+
+        Assert.Equal(
+            ["alpha.jpg", "beta.txt", "[tag] zeta.txt"],
+            items.Select(item => item.Name));
+    }
+
+    [Fact]
+    public async Task LoadDirectoryAsync_SortByModifiedDateDescending()
+    {
+        var olderPath = Path.Combine(_temporaryDirectory, "older.txt");
+        var newerPath = Path.Combine(_temporaryDirectory, "newer.txt");
+        await File.WriteAllTextAsync(olderPath, "older");
+        await File.WriteAllTextAsync(newerPath, "newer");
+        File.SetLastWriteTimeUtc(olderPath, new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        File.SetLastWriteTimeUtc(newerPath, new DateTime(2024, 2, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        var items = await _service.LoadDirectoryAsync(
+            _temporaryDirectory,
+            new FileSortOptions(FileSortField.Modified, FileSortDirection.Descending));
+
+        Assert.Equal(
+            ["newer.txt", "older.txt"],
+            items.Select(item => item.Name));
     }
 
     [Fact]
@@ -98,6 +152,22 @@ public sealed class FileSystemBrowserServiceTests : IDisposable
         var nestedMatch = Assert.Single(nestedMatches);
         Assert.Equal("nested-note.txt", nestedMatch.Name);
         Assert.Equal(Path.Combine(childDirectory.FullName, "nested-note.txt"), nestedMatch.Path);
+    }
+
+    [Fact]
+    public async Task SearchDirectoryAsync_AppliesSortOptions()
+    {
+        await File.WriteAllTextAsync(Path.Combine(_temporaryDirectory, "alpha-match.txt"), "a");
+        await File.WriteAllTextAsync(Path.Combine(_temporaryDirectory, "zeta-match.txt"), "z");
+
+        var items = await _service.SearchDirectoryAsync(
+            _temporaryDirectory,
+            "match",
+            new FileSortOptions(FileSortField.Name, FileSortDirection.Descending));
+
+        Assert.Equal(
+            ["zeta-match.txt", "alpha-match.txt"],
+            items.Select(item => item.Name));
     }
 
     [Fact]

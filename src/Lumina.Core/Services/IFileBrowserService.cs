@@ -8,9 +8,20 @@ public interface IFileBrowserService
         string directoryPath,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<FileItem>> LoadDirectoryAsync(
+        string directoryPath,
+        FileSortOptions sortOptions,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<FileItem>> SearchDirectoryAsync(
         string directoryPath,
         string query,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<FileItem>> SearchDirectoryAsync(
+        string directoryPath,
+        string query,
+        FileSortOptions sortOptions,
         CancellationToken cancellationToken = default);
 
     Task<string> CreateDirectoryAsync(

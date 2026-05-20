@@ -16,5 +16,7 @@ public sealed record FileItem
 
     public DateTimeOffset Modified { get; init; }
 
+    public DateTimeOffset Created { get; init; }
+
     public IReadOnlyList<string> Tags { get; init; } = [];
 }
