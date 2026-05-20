@@ -500,6 +500,7 @@
                                 CornerRadius="6"
                                 DoubleTapped="FileCard_DoubleTapped"
                                 PointerPressed="FileCard_PointerPressed"
+                                RightTapped="FileCard_RightTapped"
                                 ToolTipService.ToolTip="{Binding Path=Path}">
                                 <Grid>
                                     <Grid.RowDefinitions>

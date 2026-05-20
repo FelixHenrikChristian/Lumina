@@ -11,6 +11,7 @@ file explorer grid in `src/Lumina.App/Views/FileExplorerView`.
 | Click empty grid space | Clears the current selection and focuses the file grid. |
 | Shift + click a file card | Extends selection from the current anchor to the clicked file card. |
 | Ctrl + click a file card | Toggles the clicked file card in or out of the selection. |
+| Right-click a file card | Opens a simplified Windows 11 style context menu with Cut, Copy, Rename, Delete, Open, Show in File Explorer, and Properties. |
 | Double-click a folder card | Opens that folder inside Lumina. |
 | Double-click a file card | Opens the file with the Windows default app. |
 | Mouse wheel | Scrolls the current folder vertically. |
@@ -34,6 +35,7 @@ empty grid space gives focus to the file grid.
 | Home | Selects the first file card. |
 | End | Selects the last file card. |
 | Enter | Opens the selected file or folder. |
+| Alt + Enter | Opens the selected file or folder Properties dialog. |
 | F2 | Renames the focused file or folder. |
 | Delete | Moves the selected files or folders to the Recycle Bin. |
 | Ctrl + D | Moves the selected files or folders to the Recycle Bin. |

@@ -1,6 +1,8 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 
+using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -21,6 +23,8 @@ public sealed partial class FileExplorerView : UserControl
     private const double FileGridMinColumnSpacing = 16;
     private const double FileGridRowSpacing = 18;
     private const int KeyDownStateMask = 0x8000;
+    private const uint InvalidFileSize = 0xFFFFFFFF;
+    private const long DefaultAllocationUnitSize = 4096;
     private static readonly TimeSpan SearchDebounceDelay = TimeSpan.FromMilliseconds(400);
 
     private enum SelectionNavigationMode
@@ -39,6 +43,16 @@ public sealed partial class FileExplorerView : UserControl
     private sealed record FileClipboardState(
         IReadOnlyList<string> Paths,
         FileClipboardOperation Operation);
+
+    private sealed record FilePropertiesDialogInfo(
+        string Name,
+        string IconGlyph,
+        string Type,
+        string Location,
+        long Size,
+        long SizeOnDisk,
+        DateTimeOffset Created,
+        DateTimeOffset Modified);
 
     private FileClipboardState? _fileClipboard;
     private CancellationTokenSource? _searchDebounceCancellation;
@@ -175,6 +189,21 @@ public sealed partial class FileExplorerView : UserControl
         DeleteSelectedFiles(permanently: false);
     }
 
+    private void OpenFileContextButton_Click(object sender, RoutedEventArgs e)
+    {
+        OpenSelectedFile();
+    }
+
+    private async void ShowInFileExplorerContextButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ShowSelectedFileInFileExplorerAsync();
+    }
+
+    private async void PropertiesContextButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ShowSelectedFilePropertiesAsync();
+    }
+
     private void SortButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement anchor || !ViewModel.CanSort)
@@ -215,6 +244,11 @@ public sealed partial class FileExplorerView : UserControl
 
     private void FileCard_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        if (IsRightButtonPressed(sender, e))
+        {
+            return;
+        }
+
         if (IsWithinInlineRenameBox(e.OriginalSource))
         {
             return;
@@ -259,6 +293,32 @@ public sealed partial class FileExplorerView : UserControl
         e.Handled = true;
     }
 
+    private void FileCard_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (IsWithinInlineRenameBox(e.OriginalSource))
+        {
+            return;
+        }
+
+        if (sender is not FrameworkElement anchor ||
+            GetFileFromSender(sender) is not { } file)
+        {
+            return;
+        }
+
+        CancelInlineRename();
+        FocusFileForContextMenu(file);
+
+        CreateFileContextFlyout().ShowAt(
+            anchor,
+            new FlyoutShowOptions
+            {
+                Position = e.GetPosition(anchor),
+            });
+
+        e.Handled = true;
+    }
+
     private void FileGridScrollViewer_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (IsWithinInlineRenameBox(e.OriginalSource))
@@ -285,6 +345,10 @@ public sealed partial class FileExplorerView : UserControl
                     return;
                 case VirtualKey.Right:
                     NavigateForward();
+                    e.Handled = true;
+                    return;
+                case VirtualKey.Enter:
+                    _ = ShowSelectedFilePropertiesAsync();
                     e.Handled = true;
                     return;
             }
@@ -905,6 +969,67 @@ public sealed partial class FileExplorerView : UserControl
         await OpenFileAsync(ViewModel.SelectedFile);
     }
 
+    private async Task ShowSelectedFileInFileExplorerAsync()
+    {
+        if (ViewModel.SelectedFile is null)
+        {
+            return;
+        }
+
+        await ShowFileInFileExplorerAsync(ViewModel.SelectedFile);
+    }
+
+    private async Task ShowSelectedFilePropertiesAsync()
+    {
+        if (ViewModel.SelectedFile is null)
+        {
+            return;
+        }
+
+        await ShowFilePropertiesAsync(ViewModel.SelectedFile);
+    }
+
+    private async Task ShowFileInFileExplorerAsync(FileExplorerItemViewModel file)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"/select,\"{file.Path}\"",
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            await ShowFileOperationErrorDialogAsync(
+                "Open in File Explorer failed",
+                ex.Message);
+        }
+    }
+
+    private async Task ShowFilePropertiesAsync(FileExplorerItemViewModel file)
+    {
+        try
+        {
+            var properties = await Task.Run(() => LoadFileProperties(file));
+            var dialog = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = $"{properties.Name} Properties",
+                Content = CreateFilePropertiesContent(properties),
+                CloseButtonText = "OK",
+                DefaultButton = ContentDialogButton.Close,
+            };
+
+            await dialog.ShowAsync();
+        }
+        catch (Exception ex)
+        {
+            await ShowFileOperationErrorDialogAsync("Properties failed", ex.Message);
+        }
+    }
+
     private async void RefreshCurrentFolder()
     {
         await ViewModel.RefreshAsync();
@@ -1091,6 +1216,329 @@ public sealed partial class FileExplorerView : UserControl
         flyout.Items.Add(CreateSortDirectionItem(FileSortDirection.Descending, "Descending"));
 
         return flyout;
+    }
+
+    private CommandBarFlyout CreateFileContextFlyout()
+    {
+        var flyout = new CommandBarFlyout
+        {
+            Placement = FlyoutPlacementMode.RightEdgeAlignedTop,
+        };
+
+        flyout.PrimaryCommands.Add(CreateContextCommandButton(
+            "Cut",
+            "\uE8C6",
+            CutButton_Click));
+        flyout.PrimaryCommands.Add(CreateContextCommandButton(
+            "Copy",
+            "\uE8C8",
+            CopyButton_Click));
+        flyout.PrimaryCommands.Add(CreateContextCommandButton(
+            "Rename",
+            "\uE8AC",
+            RenameButton_Click));
+        flyout.PrimaryCommands.Add(CreateContextCommandButton(
+            "Delete",
+            "\uE74D",
+            DeleteButton_Click));
+
+        var openButton = CreateContextCommandButton(
+            "Open",
+            "\uE8E5",
+            OpenFileContextButton_Click);
+        openButton.KeyboardAccelerators.Add(new KeyboardAccelerator
+        {
+            Key = VirtualKey.Enter,
+        });
+        flyout.SecondaryCommands.Add(openButton);
+
+        flyout.SecondaryCommands.Add(CreateContextCommandButton(
+            "Show in File Explorer",
+            "\uE8A7",
+            ShowInFileExplorerContextButton_Click));
+
+        var propertiesButton = CreateContextCommandButton(
+            "Properties",
+            "\uE946",
+            PropertiesContextButton_Click);
+        propertiesButton.KeyboardAccelerators.Add(new KeyboardAccelerator
+        {
+            Key = VirtualKey.Enter,
+            Modifiers = VirtualKeyModifiers.Menu,
+        });
+        flyout.SecondaryCommands.Add(propertiesButton);
+
+        return flyout;
+    }
+
+    private static AppBarButton CreateContextCommandButton(
+        string label,
+        string glyph,
+        RoutedEventHandler clickHandler)
+    {
+        var button = new AppBarButton
+        {
+            Label = label,
+            Icon = new FontIcon
+            {
+                FontFamily = new FontFamily("Segoe Fluent Icons"),
+                FontSize = 16,
+                Glyph = glyph,
+            },
+        };
+        button.Click += clickHandler;
+        ToolTipService.SetToolTip(button, label);
+
+        return button;
+    }
+
+    private static FilePropertiesDialogInfo LoadFileProperties(FileExplorerItemViewModel file)
+    {
+        if (Directory.Exists(file.Path))
+        {
+            var directory = new DirectoryInfo(file.Path);
+            var totals = CalculateDirectoryStorage(directory.FullName);
+
+            return new FilePropertiesDialogInfo(
+                directory.Name,
+                "\uE8B7",
+                "Folder",
+                directory.Parent?.FullName ?? directory.FullName,
+                totals.Size,
+                totals.SizeOnDisk,
+                new DateTimeOffset(directory.CreationTimeUtc, TimeSpan.Zero),
+                new DateTimeOffset(directory.LastWriteTimeUtc, TimeSpan.Zero));
+        }
+
+        if (File.Exists(file.Path))
+        {
+            var fileInfo = new FileInfo(file.Path);
+
+            return new FilePropertiesDialogInfo(
+                fileInfo.Name,
+                file.IconGlyph,
+                ResolvePropertyType(fileInfo),
+                fileInfo.DirectoryName ?? string.Empty,
+                fileInfo.Length,
+                CalculateSizeOnDisk(fileInfo),
+                new DateTimeOffset(fileInfo.CreationTimeUtc, TimeSpan.Zero),
+                new DateTimeOffset(fileInfo.LastWriteTimeUtc, TimeSpan.Zero));
+        }
+
+        return new FilePropertiesDialogInfo(
+            file.FileSystemName,
+            file.IconGlyph,
+            file.IsDirectory ? "Folder" : "File",
+            Path.GetDirectoryName(file.Path) ?? string.Empty,
+            file.File.Size,
+            CalculateFallbackSizeOnDisk(file.File.Size),
+            file.File.Created,
+            file.File.Modified);
+    }
+
+    private static FrameworkElement CreateFilePropertiesContent(FilePropertiesDialogInfo properties)
+    {
+        var root = new StackPanel
+        {
+            Width = 460,
+            Spacing = 14,
+        };
+
+        root.Children.Add(CreatePropertiesHeader(properties));
+        root.Children.Add(CreatePropertiesSeparator());
+        root.Children.Add(CreatePropertiesRows(
+            ("Type:", properties.Type),
+            ("Location:", properties.Location),
+            ("Size:", FormatByteCount(properties.Size)),
+            ("Size on disk:", FormatByteCount(properties.SizeOnDisk))));
+        root.Children.Add(CreatePropertiesSeparator());
+        root.Children.Add(CreatePropertiesRows(
+            ("Created:", FormatDateTime(properties.Created)),
+            ("Modified:", FormatDateTime(properties.Modified))));
+
+        return root;
+    }
+
+    private static FrameworkElement CreatePropertiesHeader(FilePropertiesDialogInfo properties)
+    {
+        var header = new Grid
+        {
+            ColumnSpacing = 16,
+        };
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var icon = new FontIcon
+        {
+            FontFamily = new FontFamily("Segoe Fluent Icons"),
+            FontSize = 40,
+            Glyph = properties.IconGlyph,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(icon, 0);
+        header.Children.Add(icon);
+
+        var name = new TextBlock
+        {
+            FontSize = 18,
+            FontWeight = FontWeights.SemiBold,
+            IsTextSelectionEnabled = true,
+            Text = properties.Name,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextWrapping = TextWrapping.NoWrap,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(name, 1);
+        header.Children.Add(name);
+
+        return header;
+    }
+
+    private static Grid CreatePropertiesRows(params (string Label, string Value)[] rows)
+    {
+        var grid = new Grid
+        {
+            RowSpacing = 10,
+        };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(112) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        for (var index = 0; index < rows.Length; index++)
+        {
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var label = new TextBlock
+            {
+                Text = rows[index].Label,
+                VerticalAlignment = VerticalAlignment.Top,
+            };
+            Grid.SetRow(label, index);
+            Grid.SetColumn(label, 0);
+            grid.Children.Add(label);
+
+            var value = new TextBlock
+            {
+                IsTextSelectionEnabled = true,
+                Text = rows[index].Value,
+                TextWrapping = TextWrapping.Wrap,
+            };
+            Grid.SetRow(value, index);
+            Grid.SetColumn(value, 1);
+            grid.Children.Add(value);
+        }
+
+        return grid;
+    }
+
+    private static FrameworkElement CreatePropertiesSeparator()
+    {
+        return new Border
+        {
+            Height = 1,
+            Background = GetThemeBrush("DividerStrokeColorDefaultBrush"),
+        };
+    }
+
+    private static (long Size, long SizeOnDisk) CalculateDirectoryStorage(string directoryPath)
+    {
+        var size = 0L;
+        var sizeOnDisk = 0L;
+        var directory = new DirectoryInfo(directoryPath);
+        var enumerationOptions = new EnumerationOptions
+        {
+            AttributesToSkip = System.IO.FileAttributes.ReparsePoint,
+            IgnoreInaccessible = true,
+            RecurseSubdirectories = true,
+        };
+
+        foreach (var file in directory.EnumerateFiles("*", enumerationOptions))
+        {
+            try
+            {
+                size += file.Length;
+                sizeOnDisk += CalculateSizeOnDisk(file);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+
+        return (size, sizeOnDisk);
+    }
+
+    private static long CalculateSizeOnDisk(FileInfo file)
+    {
+        uint highSize;
+        var lowSize = GetCompressedFileSize(file.FullName, out highSize);
+        if (lowSize != InvalidFileSize || Marshal.GetLastWin32Error() == 0)
+        {
+            return ((long)highSize << 32) + lowSize;
+        }
+
+        return CalculateFallbackSizeOnDisk(file.Length);
+    }
+
+    private static long CalculateFallbackSizeOnDisk(long size)
+    {
+        if (size <= 0)
+        {
+            return 0;
+        }
+
+        return ((size + DefaultAllocationUnitSize - 1) / DefaultAllocationUnitSize) *
+            DefaultAllocationUnitSize;
+    }
+
+    private static string ResolvePropertyType(FileInfo file)
+    {
+        var extension = file.Extension;
+        if (string.IsNullOrWhiteSpace(extension))
+        {
+            return "File";
+        }
+
+        return $"{extension.TrimStart('.').ToUpperInvariant()} File ({extension})";
+    }
+
+    private static string FormatByteCount(long bytes)
+    {
+        var clampedBytes = Math.Max(0, bytes);
+        if (clampedBytes == 0)
+        {
+            return "0 bytes";
+        }
+
+        string[] units = ["bytes", "KB", "MB", "GB", "TB"];
+        var size = (double)clampedBytes;
+        var unitIndex = 0;
+        while (size >= 1024 && unitIndex < units.Length - 1)
+        {
+            size /= 1024;
+            unitIndex++;
+        }
+
+        var readableSize = unitIndex == 0
+            ? $"{clampedBytes.ToString("N0", CultureInfo.CurrentCulture)} bytes"
+            : $"{size.ToString("0.#", CultureInfo.CurrentCulture)} {units[unitIndex]}";
+
+        return $"{readableSize} ({clampedBytes.ToString("N0", CultureInfo.CurrentCulture)} bytes)";
+    }
+
+    private static string FormatDateTime(DateTimeOffset dateTime)
+    {
+        return dateTime
+            .ToLocalTime()
+            .ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.CurrentCulture);
+    }
+
+    private static Brush? GetThemeBrush(string resourceKey)
+    {
+        return Application.Current.Resources.TryGetValue(resourceKey, out var value) &&
+            value is Brush brush
+                ? brush
+                : null;
     }
 
     private MenuFlyoutItem CreateSortFieldItem(FileSortField sortField, string text)
@@ -1293,6 +1741,28 @@ public sealed partial class FileExplorerView : UserControl
         return File.Exists(path) || Directory.Exists(path);
     }
 
+    private static bool IsRightButtonPressed(
+        object sender,
+        PointerRoutedEventArgs e)
+    {
+        return sender is UIElement element &&
+            e.GetCurrentPoint(element).Properties.IsRightButtonPressed;
+    }
+
+    private void FocusFileForContextMenu(FileExplorerItemViewModel file)
+    {
+        if (file.IsSelected)
+        {
+            ViewModel.FocusFile(file);
+        }
+        else
+        {
+            ViewModel.SelectFile(file);
+        }
+
+        FileGridScrollViewer.Focus(FocusState.Pointer);
+    }
+
     private void AttachSearchTextBoxEvents()
     {
         SearchBox.ApplyTemplate();
@@ -1359,6 +1829,11 @@ public sealed partial class FileExplorerView : UserControl
 
     [DllImport("user32.dll")]
     private static extern short GetKeyState(int virtualKey);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint GetCompressedFileSize(
+        string lpFileName,
+        out uint lpFileSizeHigh);
 
     private static bool IsWithinInlineRenameBox(object? source)
     {
