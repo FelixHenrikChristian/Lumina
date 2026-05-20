@@ -15,6 +15,7 @@ public sealed class FileExplorerViewModel : ObservableObject
     private static readonly double[] CardWidthZoomLevels = [176, 208, 240, 280, 320, 368];
     private const double InfoPanelHeight = 48;
     private const int DefaultZoomLevelIndex = 2;
+    private const string DefaultNewFolderName = "New folder";
 
     private readonly IFileBrowserService _fileBrowserService;
     private readonly IFileThumbnailService _fileThumbnailService;
@@ -438,6 +439,25 @@ public sealed class FileExplorerViewModel : ObservableObject
             newName,
             cancellationToken);
         await RefreshAndSelectAsync([renamedPath], cancellationToken);
+    }
+
+    public async Task<FileExplorerItemViewModel?> CreateFolderAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(CurrentPath))
+        {
+            return null;
+        }
+
+        ClearSearchQuery();
+
+        var createdPath = await _fileBrowserService.CreateDirectoryAsync(
+            CurrentPath,
+            DefaultNewFolderName,
+            cancellationToken);
+        await RefreshAndSelectAsync([createdPath], cancellationToken);
+
+        return SelectedFile;
     }
 
     public async Task DeleteFilesAsync(

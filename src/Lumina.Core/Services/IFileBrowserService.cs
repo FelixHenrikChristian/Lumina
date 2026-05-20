@@ -13,6 +13,11 @@ public interface IFileBrowserService
         string query,
         CancellationToken cancellationToken = default);
 
+    Task<string> CreateDirectoryAsync(
+        string parentDirectoryPath,
+        string preferredName,
+        CancellationToken cancellationToken = default);
+
     Task<string> RenameAsync(
         string path,
         string newName,

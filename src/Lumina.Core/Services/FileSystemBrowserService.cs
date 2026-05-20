@@ -92,6 +92,19 @@ public sealed class FileSystemBrowserService : IFileBrowserService
             cancellationToken);
     }
 
+    public Task<string> CreateDirectoryAsync(
+        string parentDirectoryPath,
+        string preferredName,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(parentDirectoryPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(preferredName);
+
+        return Task.Run(
+            () => CreateDirectory(parentDirectoryPath.Trim(), preferredName.Trim(), cancellationToken),
+            cancellationToken);
+    }
+
     public Task<string> RenameAsync(
         string path,
         string newName,
@@ -195,6 +208,24 @@ public sealed class FileSystemBrowserService : IFileBrowserService
             .ThenBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase)
             .ThenBy(item => item.Path, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
+    }
+
+    private string CreateDirectory(
+        string parentDirectoryPath,
+        string preferredName,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        ValidateFileName(preferredName);
+
+        var parentDirectory = GetExistingDirectory(parentDirectoryPath);
+        var directoryPath = ResolveDirectoryCreationPath(
+            parentDirectory.FullName,
+            preferredName);
+        Directory.CreateDirectory(directoryPath);
+
+        return directoryPath;
     }
 
     private string Rename(
@@ -481,6 +512,30 @@ public sealed class FileSystemBrowserService : IFileBrowserService
         }
 
         throw new IOException($"Could not resolve a unique copy name for: {sourcePath}");
+    }
+
+    private static string ResolveDirectoryCreationPath(
+        string parentDirectoryPath,
+        string preferredName)
+    {
+        var originalPath = Path.Combine(parentDirectoryPath, preferredName);
+        if (!PathExists(originalPath))
+        {
+            return originalPath;
+        }
+
+        for (var copyIndex = 2; copyIndex < int.MaxValue; copyIndex++)
+        {
+            var candidatePath = Path.Combine(
+                parentDirectoryPath,
+                $"{preferredName} ({copyIndex})");
+            if (!PathExists(candidatePath))
+            {
+                return candidatePath;
+            }
+        }
+
+        throw new IOException($"Could not resolve a unique folder name for: {preferredName}");
     }
 
     private static void EnsureCanCopyIntoDirectory(

@@ -101,6 +101,36 @@ public sealed class FileSystemBrowserServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateDirectoryAsync_CreatesFolderWithPreferredName()
+    {
+        var createdPath = await _service.CreateDirectoryAsync(_temporaryDirectory, "New folder");
+
+        Assert.Equal(Path.Combine(_temporaryDirectory, "New folder"), createdPath);
+        Assert.True(Directory.Exists(createdPath));
+    }
+
+    [Fact]
+    public async Task CreateDirectoryAsync_ExistingNameUsesExplorerStyleName()
+    {
+        Directory.CreateDirectory(Path.Combine(_temporaryDirectory, "New folder"));
+        await File.WriteAllTextAsync(Path.Combine(_temporaryDirectory, "New folder (2)"), "file");
+
+        var createdPath = await _service.CreateDirectoryAsync(_temporaryDirectory, "New folder");
+
+        Assert.Equal(Path.Combine(_temporaryDirectory, "New folder (3)"), createdPath);
+        Assert.True(Directory.Exists(createdPath));
+    }
+
+    [Fact]
+    public async Task CreateDirectoryAsync_InvalidName_ThrowsArgumentException()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _service.CreateDirectoryAsync(
+                _temporaryDirectory,
+                Path.Combine("other", "New folder")));
+    }
+
+    [Fact]
     public async Task RenameAsync_RenamesFileInPlace()
     {
         var filePath = Path.Combine(_temporaryDirectory, "old.txt");

@@ -159,6 +159,11 @@ public sealed partial class FileExplorerView : UserControl
         PasteFiles();
     }
 
+    private async void NewFolderMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        await CreateFolderAsync();
+    }
+
     private void RenameButton_Click(object sender, RoutedEventArgs e)
     {
         RenameFocusedFile();
@@ -268,6 +273,14 @@ public sealed partial class FileExplorerView : UserControl
                 if (isControlDown)
                 {
                     DeleteSelectedFiles(permanently: false);
+                    e.Handled = true;
+                }
+
+                break;
+            case VirtualKey.N:
+                if (isControlDown && isShiftDown)
+                {
+                    _ = CreateFolderAsync();
                     e.Handled = true;
                 }
 
@@ -576,6 +589,32 @@ public sealed partial class FileExplorerView : UserControl
         }
 
         BeginInlineRename(file);
+    }
+
+    private async Task CreateFolderAsync()
+    {
+        if (!ViewModel.CanUseFolderCommands)
+        {
+            return;
+        }
+
+        CancelPendingSearch();
+        _isSearchTextComposing = false;
+
+        await RunFileOperationAsync(
+            async () =>
+            {
+                var folder = await ViewModel.CreateFolderAsync();
+                if (folder is null)
+                {
+                    return;
+                }
+
+                EnsureSelectedFileVisible();
+                BeginInlineRename(folder);
+            },
+            "New folder failed");
+        FileGridScrollViewer.Focus(FocusState.Programmatic);
     }
 
     private void BeginInlineRename(FileExplorerItemViewModel file)

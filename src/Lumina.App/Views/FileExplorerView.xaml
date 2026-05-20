@@ -268,9 +268,20 @@
                         <AppBarElementContainer Style="{StaticResource ExplorerCommandContainerStyle}">
                             <Button
                                 AutomationProperties.Name="New"
-                                IsEnabled="False"
+                                IsEnabled="{Binding CanUseFolderCommands}"
                                 Style="{StaticResource ExplorerCommandTextButtonStyle}"
                                 ToolTipService.ToolTip="New">
+                                <Button.Flyout>
+                                    <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                                        <MenuFlyoutItem
+                                            Click="NewFolderMenuItem_Click"
+                                            Text="Folder">
+                                            <MenuFlyoutItem.Icon>
+                                                <FontIcon Glyph="&#xE8B7;" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                    </MenuFlyout>
+                                </Button.Flyout>
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <FontIcon
                                         FontFamily="Segoe Fluent Icons"
