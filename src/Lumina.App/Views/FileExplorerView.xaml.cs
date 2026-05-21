@@ -18,6 +18,7 @@ using Windows.System;
 using Lumina.App.Services;
 using Lumina.App.ViewModels;
 using Lumina.Core.Models;
+using Lumina.Core.Services;
 
 namespace Lumina.App.Views;
 
@@ -52,7 +53,12 @@ public sealed partial class FileExplorerView : UserControl
     private sealed record FileTransferOperationResult(
         bool Succeeded,
         bool Cancelled,
-        string? ErrorMessage);
+        string? ErrorMessage,
+        FileOperationResult? OperationResult);
+
+    private sealed record FileConflictDialogResult(
+        FileConflictAction Action,
+        bool ApplyToAll);
 
     private sealed record FilePropertiesDialogInfo(
         string Name,
@@ -177,9 +183,39 @@ public sealed partial class FileExplorerView : UserControl
         }
     }
 
+    private sealed class PlannedFileOperationConflictResolver : IFileOperationConflictResolver
+    {
+        private readonly Dictionary<string, FileConflictAction> _decisions = new(StringComparer.OrdinalIgnoreCase);
+
+        public bool HasDecisions => _decisions.Count > 0;
+
+        public void SetDecision(string destinationPath, FileConflictAction action)
+        {
+            _decisions[FileExplorerView.NormalizeClipboardPath(destinationPath)] = action;
+        }
+
+        public Task<FileConflictAction> ResolveAsync(
+            FileConflictInfo conflict,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            return Task.FromResult(
+                _decisions.TryGetValue(
+                    FileExplorerView.NormalizeClipboardPath(conflict.DestinationPath),
+                    out var action)
+                    ? action
+                    : FileConflictAction.KeepBoth);
+        }
+    }
+
     private FileClipboardState? _fileClipboard;
     private FileExplorerItemViewModel? _dropTargetFile;
+    private FileExplorerItemViewModel? _pendingSingleSelectionFile;
+    private FileExplorerItemViewModel? _pendingToggleSelectionFile;
     private IReadOnlyList<string>? _draggedPaths;
+    private readonly List<FileOperationResult> _undoStack = [];
+    private readonly List<FileOperationResult> _redoStack = [];
     private CancellationTokenSource? _searchDebounceCancellation;
     private TextBox? _searchTextBox;
     private FileExplorerItemViewModel? _renamingFile;
@@ -208,6 +244,7 @@ public sealed partial class FileExplorerView : UserControl
         AttachSearchTextBoxEvents();
         await ViewModel.OpenLocationAsync(LocationSelectionEvents.CurrentLocation);
         await RefreshClipboardVisualStateAsync();
+        UpdateHistoryCommandState();
     }
 
     private void FileExplorerView_Unloaded(object sender, RoutedEventArgs e)
@@ -306,6 +343,16 @@ public sealed partial class FileExplorerView : UserControl
     private void PasteButton_Click(object sender, RoutedEventArgs e)
     {
         PasteFiles();
+    }
+
+    private async void UndoButton_Click(object sender, RoutedEventArgs e)
+    {
+        await UndoLastFileOperationAsync();
+    }
+
+    private async void RedoButton_Click(object sender, RoutedEventArgs e)
+    {
+        await RedoLastFileOperationAsync();
     }
 
     private async void NewFolderMenuItem_Click(object sender, RoutedEventArgs e)
@@ -414,13 +461,28 @@ public sealed partial class FileExplorerView : UserControl
             return;
         }
 
+        ClearPendingFileCardSelection();
+
         if (e.KeyModifiers.HasFlag(VirtualKeyModifiers.Shift))
         {
             ViewModel.ExtendSelectionTo(file);
         }
         else if (e.KeyModifiers.HasFlag(VirtualKeyModifiers.Control))
         {
-            ViewModel.ToggleFileSelection(file);
+            if (file.IsSelected && ViewModel.GetSelectedFilesOrFocusedFile().Count > 1)
+            {
+                _pendingToggleSelectionFile = file;
+                ViewModel.FocusFile(file);
+            }
+            else
+            {
+                ViewModel.ToggleFileSelection(file);
+            }
+        }
+        else if (file.IsSelected && ViewModel.GetSelectedFilesOrFocusedFile().Count > 1)
+        {
+            _pendingSingleSelectionFile = file;
+            ViewModel.FocusFile(file);
         }
         else
         {
@@ -428,6 +490,37 @@ public sealed partial class FileExplorerView : UserControl
         }
 
         FileGridScrollViewer.Focus(FocusState.Pointer);
+    }
+
+    private void FileCard_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (GetFileFromSender(sender) is not { } file ||
+            (!ReferenceEquals(_pendingSingleSelectionFile, file) &&
+                !ReferenceEquals(_pendingToggleSelectionFile, file)))
+        {
+            ClearPendingFileCardSelection();
+            return;
+        }
+
+        var shouldSelectSingle = ReferenceEquals(_pendingSingleSelectionFile, file);
+        var shouldToggleSelection = ReferenceEquals(_pendingToggleSelectionFile, file);
+        ClearPendingFileCardSelection();
+
+        if (shouldSelectSingle)
+        {
+            ViewModel.SelectFile(file);
+        }
+        else if (shouldToggleSelection)
+        {
+            ViewModel.ToggleFileSelection(file);
+        }
+
+        FileGridScrollViewer.Focus(FocusState.Pointer);
+    }
+
+    private void FileCard_PointerCanceled(object sender, PointerRoutedEventArgs e)
+    {
+        ClearPendingFileCardSelection();
     }
 
     private async void FileCard_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
@@ -477,6 +570,8 @@ public sealed partial class FileExplorerView : UserControl
 
     private async void FileCard_DragStarting(UIElement sender, DragStartingEventArgs args)
     {
+        ClearPendingFileCardSelection();
+
         if (GetFileFromSender(sender) is not { } file || file.IsRenaming)
         {
             args.Cancel = true;
@@ -672,6 +767,30 @@ public sealed partial class FileExplorerView : UserControl
                 if (isControlDown)
                 {
                     PasteFiles();
+                    e.Handled = true;
+                }
+
+                break;
+            case VirtualKey.Y:
+                if (isControlDown)
+                {
+                    _ = RedoLastFileOperationAsync();
+                    e.Handled = true;
+                }
+
+                break;
+            case VirtualKey.Z:
+                if (isControlDown)
+                {
+                    if (isShiftDown)
+                    {
+                        _ = RedoLastFileOperationAsync();
+                    }
+                    else
+                    {
+                        _ = UndoLastFileOperationAsync();
+                    }
+
                     e.Handled = true;
                 }
 
@@ -1201,6 +1320,10 @@ public sealed partial class FileExplorerView : UserControl
         var operationKind = clipboard.Operation == FileClipboardOperation.Cut
             ? FileOperationKind.Move
             : FileOperationKind.Copy;
+        var conflictResolver = await CreateConflictResolverAsync(
+            operationKind,
+            clipboard.Paths,
+            ViewModel.CurrentPath);
         var result = await RunFileTransferOperationAsync(
             operationKind,
             clipboard.Paths.Count,
@@ -1208,22 +1331,28 @@ public sealed partial class FileExplorerView : UserControl
             {
                 if (clipboard.Operation == FileClipboardOperation.Cut)
                 {
-                    await ViewModel.MoveFilesIntoCurrentDirectoryAsync(
+                    return await ViewModel.MoveFilesIntoCurrentDirectoryAsync(
                         clipboard.Paths,
                         progress,
+                        conflictResolver,
                         cancellationToken);
-                    return;
                 }
 
-                await ViewModel.CopyFilesIntoCurrentDirectoryAsync(
+                return await ViewModel.CopyFilesIntoCurrentDirectoryAsync(
                     clipboard.Paths,
                     progress,
+                    conflictResolver,
                     cancellationToken);
             });
 
         if (result.Succeeded && clipboard.Operation == FileClipboardOperation.Cut)
         {
             ClearCutClipboard();
+        }
+
+        if (result.Succeeded)
+        {
+            RecordFileOperation(result.OperationResult);
         }
 
         if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
@@ -1474,14 +1603,15 @@ public sealed partial class FileExplorerView : UserControl
     private async Task<FileTransferOperationResult> RunFileTransferOperationAsync(
         FileOperationKind operationKind,
         int itemCount,
-        Func<IProgress<FileOperationProgress>, CancellationToken, Task> operation)
+        Func<IProgress<FileOperationProgress>, CancellationToken, Task<FileOperationResult?>> operation,
+        string? title = null)
     {
         using var operationCancellation = new CancellationTokenSource();
         var progressState = new FileOperationProgressDialogState();
         var progress = new Progress<FileOperationProgress>(progressState.Apply);
         var isOperationComplete = false;
         var dialog = CreateFileOperationProgressDialog(
-            CreateFileOperationTitle(operationKind, itemCount),
+            title ?? CreateFileOperationTitle(operationKind, itemCount),
             progressState);
 
         void RequestCancel(ContentDialogButtonClickEventArgs args)
@@ -1536,12 +1666,13 @@ public sealed partial class FileExplorerView : UserControl
                 dialogOperation = dialog.ShowAsync();
             }
 
-            await operationTask;
+            var operationResult = await operationTask;
             isOperationComplete = true;
             return new FileTransferOperationResult(
                 Succeeded: true,
                 Cancelled: false,
-                ErrorMessage: null);
+                ErrorMessage: null,
+                OperationResult: operationResult);
         }
         catch (OperationCanceledException) when (operationCancellation.IsCancellationRequested)
         {
@@ -1550,7 +1681,8 @@ public sealed partial class FileExplorerView : UserControl
             return new FileTransferOperationResult(
                 Succeeded: false,
                 Cancelled: true,
-                ErrorMessage: null);
+                ErrorMessage: null,
+                OperationResult: null);
         }
         catch (Exception ex)
         {
@@ -1559,11 +1691,212 @@ public sealed partial class FileExplorerView : UserControl
             return new FileTransferOperationResult(
                 Succeeded: false,
                 Cancelled: false,
-                ErrorMessage: ex.Message);
+                ErrorMessage: ex.Message,
+                OperationResult: null);
         }
         finally
         {
             await CloseProgressDialogAsync();
+        }
+    }
+
+    private async Task<PlannedFileOperationConflictResolver?> CreateConflictResolverAsync(
+        FileOperationKind operation,
+        IReadOnlyList<string> sourcePaths,
+        string destinationDirectoryPath)
+    {
+        var resolver = new PlannedFileOperationConflictResolver();
+        FileConflictAction? applyToAllAction = null;
+
+        foreach (var sourcePath in sourcePaths)
+        {
+            if (string.IsNullOrWhiteSpace(sourcePath) || !PathExists(sourcePath))
+            {
+                continue;
+            }
+
+            var destinationPath = Path.Combine(
+                destinationDirectoryPath,
+                Path.GetFileName(sourcePath));
+            if (!PathExists(destinationPath) ||
+                IsSameFileSystemPath(sourcePath, destinationPath))
+            {
+                continue;
+            }
+
+            var action = applyToAllAction;
+            if (action is null)
+            {
+                var dialogResult = await ShowFileConflictDialogAsync(
+                    new FileConflictInfo
+                    {
+                        Operation = operation,
+                        SourcePath = sourcePath,
+                        DestinationPath = destinationPath,
+                        SourceIsDirectory = Directory.Exists(sourcePath),
+                        DestinationIsDirectory = Directory.Exists(destinationPath),
+                    });
+                action = dialogResult.Action;
+                if (dialogResult.ApplyToAll)
+                {
+                    applyToAllAction = action;
+                }
+            }
+
+            resolver.SetDecision(destinationPath, action.Value);
+        }
+
+        return resolver.HasDecisions ? resolver : null;
+    }
+
+    private async Task<FileConflictDialogResult> ShowFileConflictDialogAsync(
+        FileConflictInfo conflict)
+    {
+        var isDirectoryMerge = conflict.SourceIsDirectory && conflict.DestinationIsDirectory;
+        var applyToAllCheckBox = new CheckBox
+        {
+            Content = "Do this for all current conflicts",
+        };
+
+        var content = new StackPanel
+        {
+            Width = 460,
+            Spacing = 12,
+        };
+        content.Children.Add(new TextBlock
+        {
+            Text = $"An item named \"{conflict.Name}\" already exists in the destination.",
+            TextWrapping = TextWrapping.Wrap,
+        });
+        content.Children.Add(CreatePropertiesRows(
+            ("Source:", conflict.SourcePath),
+            ("Destination:", conflict.DestinationPath)));
+        content.Children.Add(applyToAllCheckBox);
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = isDirectoryMerge ? "Merge folder?" : "Replace or skip file?",
+            Content = content,
+            PrimaryButtonText = isDirectoryMerge ? "Merge" : "Replace",
+            SecondaryButtonText = "Keep both",
+            CloseButtonText = "Skip",
+            DefaultButton = ContentDialogButton.Secondary,
+        };
+
+        var result = await dialog.ShowAsync();
+        var action = result switch
+        {
+            ContentDialogResult.Primary => isDirectoryMerge
+                ? FileConflictAction.Merge
+                : FileConflictAction.Replace,
+            ContentDialogResult.Secondary => FileConflictAction.KeepBoth,
+            _ => FileConflictAction.Skip,
+        };
+
+        return new FileConflictDialogResult(
+            action,
+            applyToAllCheckBox.IsChecked == true);
+    }
+
+    private void RecordFileOperation(FileOperationResult? operationResult)
+    {
+        if (operationResult is null || operationResult.Entries.Count == 0)
+        {
+            return;
+        }
+
+        _undoStack.Add(operationResult);
+        _redoStack.Clear();
+        UpdateHistoryCommandState();
+    }
+
+    private async Task UndoLastFileOperationAsync()
+    {
+        if (_undoStack.Count == 0)
+        {
+            return;
+        }
+
+        var operationResult = PopLast(_undoStack);
+        var result = await RunFileTransferOperationAsync(
+            operationResult.Operation,
+            operationResult.Entries.Count,
+            async (progress, cancellationToken) =>
+            {
+                await ViewModel.UndoFileOperationAsync(
+                    operationResult,
+                    progress,
+                    cancellationToken);
+                return operationResult;
+            },
+            $"Undoing {FormatItemCount(operationResult.Entries.Count)}");
+
+        if (result.Succeeded)
+        {
+            _redoStack.Add(operationResult);
+        }
+        else
+        {
+            _undoStack.Add(operationResult);
+        }
+
+        UpdateHistoryCommandState();
+
+        if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
+        {
+            await ShowFileOperationErrorDialogAsync("Undo failed", result.ErrorMessage);
+        }
+    }
+
+    private async Task RedoLastFileOperationAsync()
+    {
+        if (_redoStack.Count == 0)
+        {
+            return;
+        }
+
+        var operationResult = PopLast(_redoStack);
+        var result = await RunFileTransferOperationAsync(
+            operationResult.Operation,
+            operationResult.Entries.Count,
+            async (progress, cancellationToken) =>
+            {
+                await ViewModel.RedoFileOperationAsync(
+                    operationResult,
+                    progress,
+                    cancellationToken);
+                return operationResult;
+            },
+            $"Redoing {FormatItemCount(operationResult.Entries.Count)}");
+
+        if (result.Succeeded)
+        {
+            _undoStack.Add(operationResult);
+        }
+        else
+        {
+            _redoStack.Add(operationResult);
+        }
+
+        UpdateHistoryCommandState();
+
+        if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
+        {
+            await ShowFileOperationErrorDialogAsync("Redo failed", result.ErrorMessage);
+        }
+    }
+
+    private void UpdateHistoryCommandState()
+    {
+        if (UndoButton is not null)
+        {
+            UndoButton.IsEnabled = _undoStack.Count > 0;
+        }
+
+        if (RedoButton is not null)
+        {
+            RedoButton.IsEnabled = _redoStack.Count > 0;
         }
     }
 
@@ -1609,6 +1942,10 @@ public sealed partial class FileExplorerView : UserControl
         var operationKind = operation == DataPackageOperation.Move
             ? FileOperationKind.Move
             : FileOperationKind.Copy;
+        var conflictResolver = await CreateConflictResolverAsync(
+            operationKind,
+            paths,
+            destinationDirectoryPath);
         var result = await RunFileTransferOperationAsync(
             operationKind,
             paths.Count,
@@ -1617,13 +1954,20 @@ public sealed partial class FileExplorerView : UserControl
                     paths,
                     destinationDirectoryPath,
                     progress,
+                    conflictResolver,
                     cancellationToken)
                 : ViewModel.CopyFilesIntoDirectoryAsync(
                     paths,
                     destinationDirectoryPath,
                     progress,
+                    conflictResolver,
                     cancellationToken));
         FileGridScrollViewer.Focus(FocusState.Programmatic);
+
+        if (result.Succeeded)
+        {
+            RecordFileOperation(result.OperationResult);
+        }
 
         if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
         {
@@ -2180,6 +2524,20 @@ public sealed partial class FileExplorerView : UserControl
             .ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.CurrentCulture);
     }
 
+    private static string FormatItemCount(int itemCount)
+    {
+        return itemCount == 1 ? "1 item" : $"{itemCount} items";
+    }
+
+    private static T PopLast<T>(List<T> items)
+    {
+        var lastIndex = items.Count - 1;
+        var item = items[lastIndex];
+        items.RemoveAt(lastIndex);
+
+        return item;
+    }
+
     private static Brush? GetThemeBrush(string resourceKey)
     {
         return Application.Current.Resources.TryGetValue(resourceKey, out var value) &&
@@ -2565,6 +2923,12 @@ public sealed partial class FileExplorerView : UserControl
         }
 
         FileGridScrollViewer.Focus(FocusState.Pointer);
+    }
+
+    private void ClearPendingFileCardSelection()
+    {
+        _pendingSingleSelectionFile = null;
+        _pendingToggleSelectionFile = null;
     }
 
     private void AttachSearchTextBoxEvents()

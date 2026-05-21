@@ -531,51 +531,56 @@ public sealed class FileExplorerViewModel : ObservableObject
         }
     }
 
-    public async Task CopyFilesIntoCurrentDirectoryAsync(
+    public async Task<FileOperationResult?> CopyFilesIntoCurrentDirectoryAsync(
         IReadOnlyList<string> sourcePaths,
         CancellationToken cancellationToken = default)
     {
-        await CopyFilesIntoCurrentDirectoryAsync(
+        return await CopyFilesIntoCurrentDirectoryAsync(
             sourcePaths,
             progress: null,
+            conflictResolver: null,
             cancellationToken);
     }
 
-    public async Task CopyFilesIntoCurrentDirectoryAsync(
+    public async Task<FileOperationResult?> CopyFilesIntoCurrentDirectoryAsync(
         IReadOnlyList<string> sourcePaths,
         IProgress<FileOperationProgress>? progress,
+        IFileOperationConflictResolver? conflictResolver = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(sourcePaths);
 
         if (sourcePaths.Count == 0 || string.IsNullOrWhiteSpace(CurrentPath))
         {
-            return;
+            return null;
         }
 
-        await CopyFilesIntoDirectoryAsync(
+        return await CopyFilesIntoDirectoryAsync(
             sourcePaths,
             CurrentPath,
             progress,
+            conflictResolver,
             cancellationToken);
     }
 
-    public async Task CopyFilesIntoDirectoryAsync(
+    public async Task<FileOperationResult?> CopyFilesIntoDirectoryAsync(
         IReadOnlyList<string> sourcePaths,
         string destinationDirectoryPath,
         CancellationToken cancellationToken = default)
     {
-        await CopyFilesIntoDirectoryAsync(
+        return await CopyFilesIntoDirectoryAsync(
             sourcePaths,
             destinationDirectoryPath,
             progress: null,
+            conflictResolver: null,
             cancellationToken);
     }
 
-    public async Task CopyFilesIntoDirectoryAsync(
+    public async Task<FileOperationResult?> CopyFilesIntoDirectoryAsync(
         IReadOnlyList<string> sourcePaths,
         string destinationDirectoryPath,
         IProgress<FileOperationProgress>? progress,
+        IFileOperationConflictResolver? conflictResolver = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(sourcePaths);
@@ -583,66 +588,74 @@ public sealed class FileExplorerViewModel : ObservableObject
 
         if (sourcePaths.Count == 0 || string.IsNullOrWhiteSpace(CurrentPath))
         {
-            return;
+            return null;
         }
 
         var normalizedDestinationPath = NormalizeDirectoryPath(destinationDirectoryPath);
-        var copiedPaths = await _fileBrowserService.CopyAsync(
+        var result = await _fileBrowserService.CopyWithResultAsync(
             sourcePaths,
             normalizedDestinationPath,
             progress,
+            conflictResolver,
             cancellationToken);
         await RefreshAfterFileTransferAsync(
-            copiedPaths,
+            result.Paths,
             normalizedDestinationPath,
             cancellationToken);
+
+        return result;
     }
 
-    public async Task MoveFilesIntoCurrentDirectoryAsync(
+    public async Task<FileOperationResult?> MoveFilesIntoCurrentDirectoryAsync(
         IReadOnlyList<string> sourcePaths,
         CancellationToken cancellationToken = default)
     {
-        await MoveFilesIntoCurrentDirectoryAsync(
+        return await MoveFilesIntoCurrentDirectoryAsync(
             sourcePaths,
             progress: null,
+            conflictResolver: null,
             cancellationToken);
     }
 
-    public async Task MoveFilesIntoCurrentDirectoryAsync(
+    public async Task<FileOperationResult?> MoveFilesIntoCurrentDirectoryAsync(
         IReadOnlyList<string> sourcePaths,
         IProgress<FileOperationProgress>? progress,
+        IFileOperationConflictResolver? conflictResolver = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(sourcePaths);
 
         if (sourcePaths.Count == 0 || string.IsNullOrWhiteSpace(CurrentPath))
         {
-            return;
+            return null;
         }
 
-        await MoveFilesIntoDirectoryAsync(
+        return await MoveFilesIntoDirectoryAsync(
             sourcePaths,
             CurrentPath,
             progress,
+            conflictResolver,
             cancellationToken);
     }
 
-    public async Task MoveFilesIntoDirectoryAsync(
+    public async Task<FileOperationResult?> MoveFilesIntoDirectoryAsync(
         IReadOnlyList<string> sourcePaths,
         string destinationDirectoryPath,
         CancellationToken cancellationToken = default)
     {
-        await MoveFilesIntoDirectoryAsync(
+        return await MoveFilesIntoDirectoryAsync(
             sourcePaths,
             destinationDirectoryPath,
             progress: null,
+            conflictResolver: null,
             cancellationToken);
     }
 
-    public async Task MoveFilesIntoDirectoryAsync(
+    public async Task<FileOperationResult?> MoveFilesIntoDirectoryAsync(
         IReadOnlyList<string> sourcePaths,
         string destinationDirectoryPath,
         IProgress<FileOperationProgress>? progress,
+        IFileOperationConflictResolver? conflictResolver = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(sourcePaths);
@@ -650,19 +663,50 @@ public sealed class FileExplorerViewModel : ObservableObject
 
         if (sourcePaths.Count == 0 || string.IsNullOrWhiteSpace(CurrentPath))
         {
-            return;
+            return null;
         }
 
         var normalizedDestinationPath = NormalizeDirectoryPath(destinationDirectoryPath);
-        var movedPaths = await _fileBrowserService.MoveAsync(
+        var result = await _fileBrowserService.MoveWithResultAsync(
             sourcePaths,
             normalizedDestinationPath,
             progress,
+            conflictResolver,
             cancellationToken);
         await RefreshAfterFileTransferAsync(
-            movedPaths,
+            result.Paths,
             normalizedDestinationPath,
             cancellationToken);
+
+        return result;
+    }
+
+    public async Task UndoFileOperationAsync(
+        FileOperationResult operationResult,
+        IProgress<FileOperationProgress>? progress,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(operationResult);
+
+        await _fileBrowserService.UndoFileOperationAsync(
+            operationResult,
+            progress,
+            cancellationToken);
+        await LoadCurrentDirectoryAsync(cancellationToken);
+    }
+
+    public async Task RedoFileOperationAsync(
+        FileOperationResult operationResult,
+        IProgress<FileOperationProgress>? progress,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(operationResult);
+
+        await _fileBrowserService.RedoFileOperationAsync(
+            operationResult,
+            progress,
+            cancellationToken);
+        await LoadCurrentDirectoryAsync(cancellationToken);
     }
 
     private async Task LoadCurrentDirectoryAsync(CancellationToken cancellationToken)

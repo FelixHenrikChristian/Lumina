@@ -310,6 +310,42 @@
                             Width="40"
                             Style="{StaticResource ExplorerCommandContainerStyle}">
                             <Button
+                                x:Name="UndoButton"
+                                AutomationProperties.Name="Undo"
+                                Click="UndoButton_Click"
+                                IsEnabled="False"
+                                Style="{StaticResource ExplorerCommandIconButtonStyle}"
+                                ToolTipService.ToolTip="Undo">
+                                <FontIcon
+                                    FontFamily="Segoe Fluent Icons"
+                                    FontSize="14"
+                                    Glyph="&#xE7A7;" />
+                            </Button>
+                        </AppBarElementContainer>
+
+                        <AppBarElementContainer
+                            Width="40"
+                            Style="{StaticResource ExplorerCommandContainerStyle}">
+                            <Button
+                                x:Name="RedoButton"
+                                AutomationProperties.Name="Redo"
+                                Click="RedoButton_Click"
+                                IsEnabled="False"
+                                Style="{StaticResource ExplorerCommandIconButtonStyle}"
+                                ToolTipService.ToolTip="Redo">
+                                <FontIcon
+                                    FontFamily="Segoe Fluent Icons"
+                                    FontSize="14"
+                                    Glyph="&#xE7A6;" />
+                            </Button>
+                        </AppBarElementContainer>
+
+                        <AppBarSeparator />
+
+                        <AppBarElementContainer
+                            Width="40"
+                            Style="{StaticResource ExplorerCommandContainerStyle}">
+                            <Button
                                 AutomationProperties.Name="Cut"
                                 Click="CutButton_Click"
                                 IsEnabled="{Binding CanUseSelectedFileCommands}"
@@ -526,6 +562,8 @@
                                 DragStarting="FileCard_DragStarting"
                                 Opacity="{Binding CardOpacity}"
                                 PointerPressed="FileCard_PointerPressed"
+                                PointerReleased="FileCard_PointerReleased"
+                                PointerCanceled="FileCard_PointerCanceled"
                                 RightTapped="FileCard_RightTapped"
                                 Drop="FileCard_Drop"
                                 DropCompleted="FileCard_DropCompleted"

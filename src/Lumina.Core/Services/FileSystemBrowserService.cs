@@ -170,17 +170,39 @@ public sealed class FileSystemBrowserService : IFileBrowserService
             cancellationToken);
     }
 
-    public Task<IReadOnlyList<string>> CopyAsync(
+    public async Task<IReadOnlyList<string>> CopyAsync(
         IReadOnlyList<string> sourcePaths,
         string destinationDirectoryPath,
         IProgress<FileOperationProgress>? progress,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await CopyWithResultAsync(
+            sourcePaths,
+            destinationDirectoryPath,
+            progress,
+            conflictResolver: null,
+            cancellationToken);
+
+        return result.Paths;
+    }
+
+    public Task<FileOperationResult> CopyWithResultAsync(
+        IReadOnlyList<string> sourcePaths,
+        string destinationDirectoryPath,
+        IProgress<FileOperationProgress>? progress = null,
+        IFileOperationConflictResolver? conflictResolver = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(sourcePaths);
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationDirectoryPath);
 
         return Task.Run(
-            () => Copy(sourcePaths, destinationDirectoryPath.Trim(), progress, cancellationToken),
+            () => Copy(
+                sourcePaths,
+                destinationDirectoryPath.Trim(),
+                progress,
+                conflictResolver,
+                cancellationToken),
             cancellationToken);
     }
 
@@ -196,17 +218,63 @@ public sealed class FileSystemBrowserService : IFileBrowserService
             cancellationToken);
     }
 
-    public Task<IReadOnlyList<string>> MoveAsync(
+    public async Task<IReadOnlyList<string>> MoveAsync(
         IReadOnlyList<string> sourcePaths,
         string destinationDirectoryPath,
         IProgress<FileOperationProgress>? progress,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await MoveWithResultAsync(
+            sourcePaths,
+            destinationDirectoryPath,
+            progress,
+            conflictResolver: null,
+            cancellationToken);
+
+        return result.Paths;
+    }
+
+    public Task<FileOperationResult> MoveWithResultAsync(
+        IReadOnlyList<string> sourcePaths,
+        string destinationDirectoryPath,
+        IProgress<FileOperationProgress>? progress = null,
+        IFileOperationConflictResolver? conflictResolver = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(sourcePaths);
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationDirectoryPath);
 
         return Task.Run(
-            () => Move(sourcePaths, destinationDirectoryPath.Trim(), progress, cancellationToken),
+            () => Move(
+                sourcePaths,
+                destinationDirectoryPath.Trim(),
+                progress,
+                conflictResolver,
+                cancellationToken),
+            cancellationToken);
+    }
+
+    public Task UndoFileOperationAsync(
+        FileOperationResult operationResult,
+        IProgress<FileOperationProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(operationResult);
+
+        return Task.Run(
+            () => UndoFileOperation(operationResult, progress, cancellationToken),
+            cancellationToken);
+    }
+
+    public Task RedoFileOperationAsync(
+        FileOperationResult operationResult,
+        IProgress<FileOperationProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(operationResult);
+
+        return Task.Run(
+            () => RedoFileOperation(operationResult, progress, cancellationToken),
             cancellationToken);
     }
 
@@ -326,14 +394,92 @@ public sealed class FileSystemBrowserService : IFileBrowserService
         }
     }
 
-    private IReadOnlyList<string> Copy(
+    private static void UndoFileOperation(
+        FileOperationResult operationResult,
+        IProgress<FileOperationProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var progressState = CreateHistoryProgressState(operationResult, progress);
+        foreach (var entry in operationResult.Entries.Reverse())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            progressState.ReportItemStarted(entry.DestinationPath, entry.SourcePath);
+
+            switch (entry.Kind)
+            {
+                case FileOperationEntryKind.Copied:
+                    DeleteExistingPath(entry.DestinationPath);
+                    break;
+                case FileOperationEntryKind.Moved:
+                    MovePathSimple(entry.DestinationPath, entry.SourcePath);
+                    break;
+                case FileOperationEntryKind.ReplacedByCopy:
+                    DeleteExistingPath(entry.DestinationPath);
+                    CopyPathForBackup(entry.BackupPath, entry.DestinationPath, cancellationToken);
+                    break;
+                case FileOperationEntryKind.ReplacedByMove:
+                    MovePathSimple(entry.DestinationPath, entry.SourcePath);
+                    CopyPathForBackup(entry.BackupPath, entry.DestinationPath, cancellationToken);
+                    break;
+            }
+
+            progressState.ReportItemCompleted(
+                entry.DestinationPath,
+                entry.SourcePath,
+                completedBytes: 0);
+        }
+
+        progressState.ReportCompleted();
+    }
+
+    private static void RedoFileOperation(
+        FileOperationResult operationResult,
+        IProgress<FileOperationProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var progressState = CreateHistoryProgressState(operationResult, progress);
+        foreach (var entry in operationResult.Entries)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            progressState.ReportItemStarted(entry.SourcePath, entry.DestinationPath);
+
+            switch (entry.Kind)
+            {
+                case FileOperationEntryKind.Copied:
+                    CopyPathForBackup(entry.SourcePath, entry.DestinationPath, cancellationToken);
+                    break;
+                case FileOperationEntryKind.Moved:
+                    MovePathSimple(entry.SourcePath, entry.DestinationPath);
+                    break;
+                case FileOperationEntryKind.ReplacedByCopy:
+                    DeleteExistingPath(entry.DestinationPath);
+                    CopyPathForBackup(entry.SourcePath, entry.DestinationPath, cancellationToken);
+                    break;
+                case FileOperationEntryKind.ReplacedByMove:
+                    DeleteExistingPath(entry.DestinationPath);
+                    MovePathSimple(entry.SourcePath, entry.DestinationPath);
+                    break;
+            }
+
+            progressState.ReportItemCompleted(
+                entry.SourcePath,
+                entry.DestinationPath,
+                completedBytes: 0);
+        }
+
+        progressState.ReportCompleted();
+    }
+
+    private FileOperationResult Copy(
         IReadOnlyList<string> sourcePaths,
         string destinationDirectoryPath,
         IProgress<FileOperationProgress>? progress,
+        IFileOperationConflictResolver? conflictResolver,
         CancellationToken cancellationToken)
     {
         var destinationDirectory = GetExistingDirectory(destinationDirectoryPath);
         var copiedPaths = new List<string>(sourcePaths.Count);
+        var entries = new List<FileOperationEntry>();
         var progressState = CreateProgressState(
             FileOperationKind.Copy,
             sourcePaths,
@@ -347,26 +493,51 @@ public sealed class FileSystemBrowserService : IFileBrowserService
             var normalizedSourcePath = GetExistingPath(sourcePath);
             EnsureCanCopyIntoDirectory(normalizedSourcePath, destinationDirectory.FullName);
 
-            var destinationPath = ResolveCopyDestinationPath(
+            var destinationPath = ResolveTransferDestinationPath(
+                FileOperationKind.Copy,
                 normalizedSourcePath,
-                destinationDirectory.FullName);
-            CopyPath(normalizedSourcePath, destinationPath, progressState, cancellationToken);
-            copiedPaths.Add(destinationPath);
+                destinationDirectory.FullName,
+                conflictResolver,
+                cancellationToken,
+                out var action);
+            if (action == FileConflictAction.Skip)
+            {
+                continue;
+            }
+
+            CopyPath(
+                normalizedSourcePath,
+                destinationPath,
+                progressState,
+                entries,
+                action,
+                cancellationToken);
+            if (!IsSamePath(normalizedSourcePath, destinationPath))
+            {
+                copiedPaths.Add(destinationPath);
+            }
         }
 
         progressState.ReportCompleted();
 
-        return copiedPaths;
+        return new FileOperationResult
+        {
+            Operation = FileOperationKind.Copy,
+            Paths = copiedPaths,
+            Entries = entries,
+        };
     }
 
-    private IReadOnlyList<string> Move(
+    private FileOperationResult Move(
         IReadOnlyList<string> sourcePaths,
         string destinationDirectoryPath,
         IProgress<FileOperationProgress>? progress,
+        IFileOperationConflictResolver? conflictResolver,
         CancellationToken cancellationToken)
     {
         var destinationDirectory = GetExistingDirectory(destinationDirectoryPath);
         var movedPaths = new List<string>(sourcePaths.Count);
+        var entries = new List<FileOperationEntry>();
         var progressState = CreateProgressState(
             FileOperationKind.Move,
             sourcePaths,
@@ -378,11 +549,11 @@ public sealed class FileSystemBrowserService : IFileBrowserService
             cancellationToken.ThrowIfCancellationRequested();
 
             var normalizedSourcePath = GetExistingPath(sourcePath);
-            var destinationPath = Path.Combine(
+            var preferredDestinationPath = Path.Combine(
                 destinationDirectory.FullName,
                 GetPathName(normalizedSourcePath));
 
-            if (IsSamePath(normalizedSourcePath, destinationPath))
+            if (IsSamePath(normalizedSourcePath, preferredDestinationPath))
             {
                 movedPaths.Add(normalizedSourcePath);
                 progressState.ReportItemCompleted(
@@ -394,33 +565,36 @@ public sealed class FileSystemBrowserService : IFileBrowserService
 
             EnsureCanMoveIntoDirectory(normalizedSourcePath, destinationDirectory.FullName);
 
-            if (PathExists(destinationPath))
+            var destinationPath = ResolveTransferDestinationPath(
+                FileOperationKind.Move,
+                normalizedSourcePath,
+                destinationDirectory.FullName,
+                conflictResolver,
+                cancellationToken,
+                out var action);
+            if (action == FileConflictAction.Skip)
             {
-                throw new IOException($"Destination already exists: {destinationPath}");
+                continue;
             }
 
-            progressState.ReportItemStarted(normalizedSourcePath, destinationPath);
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (Directory.Exists(normalizedSourcePath))
-            {
-                Directory.Move(normalizedSourcePath, destinationPath);
-            }
-            else
-            {
-                File.Move(normalizedSourcePath, destinationPath);
-            }
-
-            movedPaths.Add(destinationPath);
-            progressState.ReportItemCompleted(
+            MovePath(
                 normalizedSourcePath,
                 destinationPath,
-                completedBytes: 0);
+                progressState,
+                entries,
+                action,
+                cancellationToken);
+            movedPaths.Add(destinationPath);
         }
 
         progressState.ReportCompleted();
 
-        return movedPaths;
+        return new FileOperationResult
+        {
+            Operation = FileOperationKind.Move,
+            Paths = movedPaths,
+            Entries = entries,
+        };
     }
 
     private FileItem CreateFileItem(
@@ -649,8 +823,17 @@ public sealed class FileSystemBrowserService : IFileBrowserService
         string sourcePath,
         string destinationPath,
         FileOperationProgressState progressState,
+        List<FileOperationEntry> entries,
+        FileConflictAction action,
         CancellationToken cancellationToken)
     {
+        string backupPath = string.Empty;
+        if (PathExists(destinationPath) && action == FileConflictAction.Replace)
+        {
+            backupPath = BackupPath(destinationPath, cancellationToken);
+            DeleteExistingPath(destinationPath);
+        }
+
         if (Directory.Exists(sourcePath))
         {
             progressState.ReportItemStarted(sourcePath, destinationPath);
@@ -665,11 +848,23 @@ public sealed class FileSystemBrowserService : IFileBrowserService
                              EnumerationOptions))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    var childDestinationPath = Path.Combine(
+                        destinationPath,
+                        Path.GetFileName(childPath));
+                    var childAction = FileConflictAction.KeepBoth;
+                    if (PathExists(childDestinationPath))
+                    {
+                        childDestinationPath = ResolveCopyDestinationPath(
+                            childPath,
+                            destinationPath);
+                    }
 
                     CopyPath(
                         childPath,
-                        Path.Combine(destinationPath, Path.GetFileName(childPath)),
+                        childDestinationPath,
                         progressState,
+                        entries,
+                        childAction,
                         cancellationToken);
                 }
             }
@@ -684,11 +879,110 @@ public sealed class FileSystemBrowserService : IFileBrowserService
                 sourcePath,
                 destinationPath,
                 completedBytes: 0);
+            if (action != FileConflictAction.Merge)
+            {
+                entries.Add(new FileOperationEntry
+                {
+                    Kind = string.IsNullOrWhiteSpace(backupPath)
+                        ? FileOperationEntryKind.Copied
+                        : FileOperationEntryKind.ReplacedByCopy,
+                    SourcePath = sourcePath,
+                    DestinationPath = destinationPath,
+                    BackupPath = backupPath,
+                    IsDirectory = true,
+                });
+            }
 
             return;
         }
 
         CopyFile(sourcePath, destinationPath, progressState, cancellationToken);
+        entries.Add(new FileOperationEntry
+        {
+            Kind = string.IsNullOrWhiteSpace(backupPath)
+                ? FileOperationEntryKind.Copied
+                : FileOperationEntryKind.ReplacedByCopy,
+            SourcePath = sourcePath,
+            DestinationPath = destinationPath,
+            BackupPath = backupPath,
+            IsDirectory = false,
+        });
+    }
+
+    private static void MovePath(
+        string sourcePath,
+        string destinationPath,
+        FileOperationProgressState progressState,
+        List<FileOperationEntry> entries,
+        FileConflictAction action,
+        CancellationToken cancellationToken)
+    {
+        if (action == FileConflictAction.Merge &&
+            Directory.Exists(sourcePath) &&
+            Directory.Exists(destinationPath))
+        {
+            foreach (var childPath in Directory.EnumerateFileSystemEntries(
+                         sourcePath,
+                         "*",
+                         EnumerationOptions))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var childDestinationPath = Path.Combine(
+                    destinationPath,
+                    Path.GetFileName(childPath));
+                if (PathExists(childDestinationPath))
+                {
+                    childDestinationPath = ResolveCopyDestinationPath(
+                        childPath,
+                        destinationPath);
+                }
+
+                MovePath(
+                    childPath,
+                    childDestinationPath,
+                    progressState,
+                    entries,
+                    FileConflictAction.KeepBoth,
+                    cancellationToken);
+            }
+
+            TryDeleteDirectory(sourcePath);
+            return;
+        }
+
+        string backupPath = string.Empty;
+        if (PathExists(destinationPath) && action == FileConflictAction.Replace)
+        {
+            backupPath = BackupPath(destinationPath, cancellationToken);
+            DeleteExistingPath(destinationPath);
+        }
+
+        progressState.ReportItemStarted(sourcePath, destinationPath);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (Directory.Exists(sourcePath))
+        {
+            Directory.Move(sourcePath, destinationPath);
+        }
+        else
+        {
+            File.Move(sourcePath, destinationPath);
+        }
+
+        progressState.ReportItemCompleted(
+            sourcePath,
+            destinationPath,
+            completedBytes: 0);
+        entries.Add(new FileOperationEntry
+        {
+            Kind = string.IsNullOrWhiteSpace(backupPath)
+                ? FileOperationEntryKind.Moved
+                : FileOperationEntryKind.ReplacedByMove,
+            SourcePath = sourcePath,
+            DestinationPath = destinationPath,
+            BackupPath = backupPath,
+            IsDirectory = Directory.Exists(destinationPath),
+        });
     }
 
     private static void CopyFile(
@@ -767,6 +1061,185 @@ public sealed class FileSystemBrowserService : IFileBrowserService
         destinationInfo.CreationTimeUtc = sourceInfo.CreationTimeUtc;
         destinationInfo.LastWriteTimeUtc = sourceInfo.LastWriteTimeUtc;
         destinationInfo.Attributes = sourceInfo.Attributes;
+    }
+
+    private static string ResolveTransferDestinationPath(
+        FileOperationKind operation,
+        string sourcePath,
+        string destinationDirectoryPath,
+        IFileOperationConflictResolver? conflictResolver,
+        CancellationToken cancellationToken,
+        out FileConflictAction action)
+    {
+        var destinationPath = Path.Combine(destinationDirectoryPath, GetPathName(sourcePath));
+        action = FileConflictAction.KeepBoth;
+
+        if (!PathExists(destinationPath))
+        {
+            return destinationPath;
+        }
+
+        if (operation == FileOperationKind.Move &&
+            IsSamePath(sourcePath, destinationPath))
+        {
+            action = FileConflictAction.Skip;
+            return destinationPath;
+        }
+
+        action = ResolveConflictAction(
+            operation,
+            sourcePath,
+            destinationPath,
+            conflictResolver,
+            cancellationToken);
+        return action switch
+        {
+            FileConflictAction.Skip => destinationPath,
+            FileConflictAction.Replace => destinationPath,
+            FileConflictAction.Merge when Directory.Exists(sourcePath) && Directory.Exists(destinationPath) =>
+                destinationPath,
+            _ => ResolveCopyDestinationPath(sourcePath, destinationDirectoryPath),
+        };
+    }
+
+    private static FileConflictAction ResolveConflictAction(
+        FileOperationKind operation,
+        string sourcePath,
+        string destinationPath,
+        IFileOperationConflictResolver? conflictResolver,
+        CancellationToken cancellationToken)
+    {
+        if (conflictResolver is null)
+        {
+            return operation == FileOperationKind.Move
+                ? throw new IOException($"Destination already exists: {destinationPath}")
+                : FileConflictAction.KeepBoth;
+        }
+
+        var action = conflictResolver
+            .ResolveAsync(
+                new FileConflictInfo
+                {
+                    Operation = operation,
+                    SourcePath = sourcePath,
+                    DestinationPath = destinationPath,
+                    SourceIsDirectory = Directory.Exists(sourcePath),
+                    DestinationIsDirectory = Directory.Exists(destinationPath),
+                },
+                cancellationToken)
+            .GetAwaiter()
+            .GetResult();
+
+        if (action == FileConflictAction.Merge &&
+            (!Directory.Exists(sourcePath) || !Directory.Exists(destinationPath)))
+        {
+            return FileConflictAction.Replace;
+        }
+
+        return action;
+    }
+
+    private static string BackupPath(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        var backupRoot = Path.Combine(
+            Path.GetTempPath(),
+            "Lumina-FileOperationBackups",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(backupRoot);
+
+        var backupPath = Path.Combine(backupRoot, GetPathName(path));
+        CopyPathForBackup(path, backupPath, cancellationToken);
+
+        return backupPath;
+    }
+
+    private static void CopyPathForBackup(
+        string sourcePath,
+        string destinationPath,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        EnsureParentDirectory(destinationPath);
+        if (Directory.Exists(sourcePath))
+        {
+            Directory.CreateDirectory(destinationPath);
+            foreach (var childPath in Directory.EnumerateFileSystemEntries(
+                         sourcePath,
+                         "*",
+                         EnumerationOptions))
+            {
+                CopyPathForBackup(
+                    childPath,
+                    Path.Combine(destinationPath, Path.GetFileName(childPath)),
+                    cancellationToken);
+            }
+
+            CopyDirectoryMetadata(sourcePath, destinationPath);
+            return;
+        }
+
+        File.Copy(sourcePath, destinationPath, overwrite: false);
+        CopyFileMetadata(new FileInfo(sourcePath), destinationPath);
+    }
+
+    private static void DeleteExistingPath(string path)
+    {
+        if (Directory.Exists(path))
+        {
+            Directory.Delete(path, recursive: true);
+            return;
+        }
+
+        if (File.Exists(path))
+        {
+            File.Delete(path);
+        }
+    }
+
+    private static void MovePathSimple(
+        string sourcePath,
+        string destinationPath)
+    {
+        if (!PathExists(sourcePath))
+        {
+            throw new FileNotFoundException($"File or directory not found: {sourcePath}", sourcePath);
+        }
+
+        if (PathExists(destinationPath))
+        {
+            throw new IOException($"Destination already exists: {destinationPath}");
+        }
+
+        EnsureParentDirectory(destinationPath);
+        if (Directory.Exists(sourcePath))
+        {
+            Directory.Move(sourcePath, destinationPath);
+            return;
+        }
+
+        File.Move(sourcePath, destinationPath);
+    }
+
+    private static void EnsureParentDirectory(string path)
+    {
+        var parentPath = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(parentPath))
+        {
+            Directory.CreateDirectory(parentPath);
+        }
+    }
+
+    private static FileOperationProgressState CreateHistoryProgressState(
+        FileOperationResult operationResult,
+        IProgress<FileOperationProgress>? progress)
+    {
+        var progressState = new FileOperationProgressState(operationResult.Operation, progress);
+        progressState.SetTotals(new FileTransferTotals(operationResult.Entries.Count, 0));
+        progressState.ReportProcessing();
+
+        return progressState;
     }
 
     private static void TryDeleteFile(string path)

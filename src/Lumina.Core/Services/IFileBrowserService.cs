@@ -50,6 +50,13 @@ public interface IFileBrowserService
         IProgress<FileOperationProgress>? progress,
         CancellationToken cancellationToken = default);
 
+    Task<FileOperationResult> CopyWithResultAsync(
+        IReadOnlyList<string> sourcePaths,
+        string destinationDirectoryPath,
+        IProgress<FileOperationProgress>? progress = null,
+        IFileOperationConflictResolver? conflictResolver = null,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<string>> MoveAsync(
         IReadOnlyList<string> sourcePaths,
         string destinationDirectoryPath,
@@ -59,5 +66,22 @@ public interface IFileBrowserService
         IReadOnlyList<string> sourcePaths,
         string destinationDirectoryPath,
         IProgress<FileOperationProgress>? progress,
+        CancellationToken cancellationToken = default);
+
+    Task<FileOperationResult> MoveWithResultAsync(
+        IReadOnlyList<string> sourcePaths,
+        string destinationDirectoryPath,
+        IProgress<FileOperationProgress>? progress = null,
+        IFileOperationConflictResolver? conflictResolver = null,
+        CancellationToken cancellationToken = default);
+
+    Task UndoFileOperationAsync(
+        FileOperationResult operationResult,
+        IProgress<FileOperationProgress>? progress = null,
+        CancellationToken cancellationToken = default);
+
+    Task RedoFileOperationAsync(
+        FileOperationResult operationResult,
+        IProgress<FileOperationProgress>? progress = null,
         CancellationToken cancellationToken = default);
 }
