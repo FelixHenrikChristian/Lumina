@@ -499,6 +499,7 @@
                                 BorderThickness="1"
                                 CornerRadius="6"
                                 DoubleTapped="FileCard_DoubleTapped"
+                                Opacity="{Binding CardOpacity}"
                                 PointerPressed="FileCard_PointerPressed"
                                 RightTapped="FileCard_RightTapped"
                                 ToolTipService.ToolTip="{Binding Path=Path}">

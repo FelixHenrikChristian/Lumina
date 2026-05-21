@@ -911,9 +911,13 @@ public sealed record FileExplorerBreadcrumbItemViewModel(string Name, string Pat
 
 public sealed class FileExplorerItemViewModel : ObservableObject
 {
+    private const double DefaultCardOpacity = 1;
+    private const double CutCardOpacity = 0.45;
+
     private double _cardHeight;
     private double _cardWidth;
     private bool _isFocused;
+    private bool _isCut;
     private bool _isRenaming;
     private bool _isSelected;
     private string _renameText = string.Empty;
@@ -978,6 +982,18 @@ public sealed class FileExplorerItemViewModel : ObservableObject
         }
     }
 
+    public bool IsCut
+    {
+        get => _isCut;
+        set
+        {
+            if (SetProperty(ref _isCut, value))
+            {
+                OnPropertyChanged(nameof(CardOpacity));
+            }
+        }
+    }
+
     public bool IsRenaming
     {
         get => _isRenaming;
@@ -1017,6 +1033,10 @@ public sealed class FileExplorerItemViewModel : ObservableObject
     public Visibility FocusVisibility => IsFocused && !IsSelected
         ? Visibility.Visible
         : Visibility.Collapsed;
+
+    public double CardOpacity => IsCut
+        ? CutCardOpacity
+        : DefaultCardOpacity;
 
     public Visibility DisplayInfoVisibility => IsRenaming
         ? Visibility.Collapsed

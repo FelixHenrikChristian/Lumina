@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -64,6 +65,7 @@ public sealed partial class FileExplorerView : UserControl
     public FileExplorerView()
     {
         ViewModel = new FileExplorerViewModel();
+        ViewModel.Files.CollectionChanged += Files_CollectionChanged;
         InitializeComponent();
         DataContext = ViewModel;
 
@@ -81,6 +83,7 @@ public sealed partial class FileExplorerView : UserControl
         Clipboard.ContentChanged += Clipboard_ContentChanged;
         AttachSearchTextBoxEvents();
         await ViewModel.OpenLocationAsync(LocationSelectionEvents.CurrentLocation);
+        await RefreshClipboardVisualStateAsync();
     }
 
     private void FileExplorerView_Unloaded(object sender, RoutedEventArgs e)
@@ -92,18 +95,25 @@ public sealed partial class FileExplorerView : UserControl
         DetachSearchTextBoxEvents();
     }
 
-    private void Clipboard_ContentChanged(object? sender, object e)
+    private async void Clipboard_ContentChanged(object? sender, object e)
     {
-        try
+        await RefreshClipboardVisualStateAsync();
+    }
+
+    private void Files_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.NewItems is null)
         {
-            if (!Clipboard.GetContent().Contains(StandardDataFormats.StorageItems))
-            {
-                _fileClipboard = null;
-            }
+            return;
         }
-        catch (Exception)
+
+        var cutPaths = CreateCutPathSet(_fileClipboard);
+        foreach (var item in e.NewItems)
         {
-            _fileClipboard = null;
+            if (item is FileExplorerItemViewModel file)
+            {
+                ApplyFileCutState(file, cutPaths);
+            }
         }
     }
 
@@ -932,7 +942,7 @@ public sealed partial class FileExplorerView : UserControl
                 if (clipboard.Operation == FileClipboardOperation.Cut)
                 {
                     await ViewModel.MoveFilesIntoCurrentDirectoryAsync(clipboard.Paths);
-                    ClearCutClipboard(clipboard);
+                    ClearCutClipboard();
                     return;
                 }
 
@@ -1590,12 +1600,19 @@ public sealed partial class FileExplorerView : UserControl
 
         var paths = files.Select(file => file.Path).ToList();
         _fileClipboard = new FileClipboardState(paths, operation);
+        ApplyFileClipboardVisualState();
         await TrySetSystemClipboardAsync(paths, operation);
     }
 
     private async Task<FileClipboardState?> GetFileClipboardAsync()
     {
         return await TryGetSystemClipboardAsync() ?? _fileClipboard;
+    }
+
+    private async Task RefreshClipboardVisualStateAsync()
+    {
+        _fileClipboard = await TryGetSystemClipboardAsync();
+        ApplyFileClipboardVisualState();
     }
 
     private async Task TrySetSystemClipboardAsync(
@@ -1670,14 +1687,14 @@ public sealed partial class FileExplorerView : UserControl
         }
     }
 
-    private void ClearCutClipboard(FileClipboardState clipboard)
+    private void ClearCutClipboard()
     {
-        if (_fileClipboard is not null &&
-            _fileClipboard.Operation == FileClipboardOperation.Cut &&
-            _fileClipboard.Paths.SequenceEqual(clipboard.Paths, StringComparer.OrdinalIgnoreCase))
+        if (_fileClipboard?.Operation == FileClipboardOperation.Cut)
         {
             _fileClipboard = null;
         }
+
+        ApplyFileClipboardVisualState();
 
         try
         {
@@ -1686,6 +1703,37 @@ public sealed partial class FileExplorerView : UserControl
         catch (Exception)
         {
         }
+    }
+
+    private void ApplyFileClipboardVisualState()
+    {
+        var cutPaths = CreateCutPathSet(_fileClipboard);
+        foreach (var file in ViewModel.Files)
+        {
+            ApplyFileCutState(file, cutPaths);
+        }
+    }
+
+    private static HashSet<string>? CreateCutPathSet(FileClipboardState? clipboard)
+    {
+        if (clipboard?.Operation != FileClipboardOperation.Cut)
+        {
+            return null;
+        }
+
+        var paths = clipboard.Paths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(NormalizeClipboardPath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return paths.Count == 0 ? null : paths;
+    }
+
+    private static void ApplyFileCutState(
+        FileExplorerItemViewModel file,
+        HashSet<string>? cutPaths)
+    {
+        file.IsCut = cutPaths?.Contains(NormalizeClipboardPath(file.Path)) == true;
     }
 
     private static FileExplorerItemViewModel? GetFileFromSender(object sender)
@@ -1739,6 +1787,18 @@ public sealed partial class FileExplorerView : UserControl
     private static bool PathExists(string path)
     {
         return File.Exists(path) || Directory.Exists(path);
+    }
+
+    private static string NormalizeClipboardPath(string path)
+    {
+        try
+        {
+            return Path.GetFullPath(path.Trim());
+        }
+        catch (Exception)
+        {
+            return path.Trim();
+        }
     }
 
     private static bool IsRightButtonPressed(
