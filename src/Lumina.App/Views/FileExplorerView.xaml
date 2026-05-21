@@ -427,6 +427,7 @@
             Grid.Row="2"
             Margin="24,16,24,24"
             AllowDrop="True"
+            Background="Transparent"
             DragLeave="FileDropSurface_DragLeave"
             DragOver="FileDropSurface_DragOver"
             Drop="FileDropSurface_Drop">

@@ -44,8 +44,20 @@ public interface IFileBrowserService
         string destinationDirectoryPath,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<string>> CopyAsync(
+        IReadOnlyList<string> sourcePaths,
+        string destinationDirectoryPath,
+        IProgress<FileOperationProgress>? progress,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<string>> MoveAsync(
         IReadOnlyList<string> sourcePaths,
         string destinationDirectoryPath,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<string>> MoveAsync(
+        IReadOnlyList<string> sourcePaths,
+        string destinationDirectoryPath,
+        IProgress<FileOperationProgress>? progress,
         CancellationToken cancellationToken = default);
 }

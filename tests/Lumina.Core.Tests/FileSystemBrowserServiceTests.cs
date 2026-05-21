@@ -324,6 +324,83 @@ public sealed class FileSystemBrowserServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CopyAsync_WithProgressReportsBytesAndCompletion()
+    {
+        var sourcePath = Path.Combine(_temporaryDirectory, "source.txt");
+        var destinationDirectory = Directory.CreateDirectory(Path.Combine(_temporaryDirectory, "Destination"));
+        await File.WriteAllTextAsync(sourcePath, "copy");
+        var progress = new RecordingProgress<FileOperationProgress>();
+
+        await _service.CopyAsync([sourcePath], destinationDirectory.FullName, progress);
+
+        Assert.Contains(
+            progress.Values,
+            value => value.Stage == FileOperationProgressStage.Preparing &&
+                value.Operation == FileOperationKind.Copy);
+        Assert.Contains(
+            progress.Values,
+            value => value.Stage == FileOperationProgressStage.Processing &&
+                value.CurrentItemName == "source.txt" &&
+                value.TotalBytes == 4);
+
+        var completed = progress.Values.Last(value => value.Stage == FileOperationProgressStage.Completed);
+        Assert.Equal(1, completed.CompletedItems);
+        Assert.Equal(1, completed.TotalItems);
+        Assert.Equal(4, completed.CompletedBytes);
+        Assert.Equal(4, completed.TotalBytes);
+        Assert.Equal(100, completed.PercentComplete);
+    }
+
+    [Fact]
+    public async Task CopyAsync_CancellationFromProgressStopsBeforeCurrentFileIsCopied()
+    {
+        var sourcePath = Path.Combine(_temporaryDirectory, "source.txt");
+        var destinationDirectory = Directory.CreateDirectory(Path.Combine(_temporaryDirectory, "Destination"));
+        await File.WriteAllTextAsync(sourcePath, "copy");
+        using var cancellation = new CancellationTokenSource();
+        var progress = new DelegatingProgress<FileOperationProgress>(value =>
+        {
+            if (value.Stage == FileOperationProgressStage.Processing &&
+                value.CurrentItemName == "source.txt")
+            {
+                cancellation.Cancel();
+            }
+        });
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => _service.CopyAsync(
+                [sourcePath],
+                destinationDirectory.FullName,
+                progress,
+                cancellation.Token));
+        Assert.False(File.Exists(Path.Combine(destinationDirectory.FullName, "source.txt")));
+    }
+
+    [Fact]
+    public async Task CopyAsync_CancellationDuringFileCopyRemovesPartialFile()
+    {
+        var sourcePath = Path.Combine(_temporaryDirectory, "large-source.bin");
+        var destinationDirectory = Directory.CreateDirectory(Path.Combine(_temporaryDirectory, "Destination"));
+        await File.WriteAllBytesAsync(sourcePath, new byte[2 * 1024 * 1024]);
+        using var cancellation = new CancellationTokenSource();
+        var progress = new DelegatingProgress<FileOperationProgress>(value =>
+        {
+            if (value.CompletedBytes > 0)
+            {
+                cancellation.Cancel();
+            }
+        });
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => _service.CopyAsync(
+                [sourcePath],
+                destinationDirectory.FullName,
+                progress,
+                cancellation.Token));
+        Assert.False(File.Exists(Path.Combine(destinationDirectory.FullName, "large-source.bin")));
+    }
+
+    [Fact]
     public async Task MoveAsync_MovesFileToDestinationDirectory()
     {
         var sourcePath = Path.Combine(_temporaryDirectory, "source.txt");
@@ -379,5 +456,30 @@ public sealed class FileSystemBrowserServiceTests : IDisposable
         Directory.CreateDirectory(path);
 
         return path;
+    }
+
+    private sealed class RecordingProgress<T> : IProgress<T>
+    {
+        public List<T> Values { get; } = [];
+
+        public void Report(T value)
+        {
+            Values.Add(value);
+        }
+    }
+
+    private sealed class DelegatingProgress<T> : IProgress<T>
+    {
+        private readonly Action<T> _onReport;
+
+        public DelegatingProgress(Action<T> onReport)
+        {
+            _onReport = onReport;
+        }
+
+        public void Report(T value)
+        {
+            _onReport(value);
+        }
     }
 }

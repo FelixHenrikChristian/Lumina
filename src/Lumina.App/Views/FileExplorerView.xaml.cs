@@ -7,9 +7,11 @@ using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.ApplicationModel.DataTransfer;
+using Windows.Foundation;
 using Windows.Storage;
 using Windows.System;
 
@@ -27,6 +29,7 @@ public sealed partial class FileExplorerView : UserControl
     private const uint InvalidFileSize = 0xFFFFFFFF;
     private const long DefaultAllocationUnitSize = 4096;
     private const string LuminaFilePathsFormat = "Lumina.FileExplorer.Paths";
+    private static readonly TimeSpan ProgressDialogShowDelay = TimeSpan.FromMilliseconds(300);
     private static readonly TimeSpan SearchDebounceDelay = TimeSpan.FromMilliseconds(400);
 
     private enum SelectionNavigationMode
@@ -46,6 +49,11 @@ public sealed partial class FileExplorerView : UserControl
         IReadOnlyList<string> Paths,
         FileClipboardOperation Operation);
 
+    private sealed record FileTransferOperationResult(
+        bool Succeeded,
+        bool Cancelled,
+        string? ErrorMessage);
+
     private sealed record FilePropertiesDialogInfo(
         string Name,
         string IconGlyph,
@@ -55,6 +63,119 @@ public sealed partial class FileExplorerView : UserControl
         long SizeOnDisk,
         DateTimeOffset Created,
         DateTimeOffset Modified);
+
+    private sealed class FileOperationProgressDialogState : ObservableObject
+    {
+        private string _statusText = "Preparing...";
+        private string _currentItemText = string.Empty;
+        private string _detailText = string.Empty;
+        private double _progressValue;
+        private bool _isIndeterminate = true;
+
+        public string StatusText
+        {
+            get => _statusText;
+            private set => SetProperty(ref _statusText, value);
+        }
+
+        public string CurrentItemText
+        {
+            get => _currentItemText;
+            private set => SetProperty(ref _currentItemText, value);
+        }
+
+        public string DetailText
+        {
+            get => _detailText;
+            private set => SetProperty(ref _detailText, value);
+        }
+
+        public double ProgressValue
+        {
+            get => _progressValue;
+            private set => SetProperty(ref _progressValue, value);
+        }
+
+        public bool IsIndeterminate
+        {
+            get => _isIndeterminate;
+            private set => SetProperty(ref _isIndeterminate, value);
+        }
+
+        public void Apply(FileOperationProgress progress)
+        {
+            ProgressValue = progress.PercentComplete;
+            IsIndeterminate = progress.Stage == FileOperationProgressStage.Preparing ||
+                (progress.TotalBytes <= 0 && progress.TotalItems <= 0);
+
+            StatusText = progress.Stage switch
+            {
+                FileOperationProgressStage.Preparing => $"Preparing to {FormatOperationVerb(progress.Operation)}...",
+                FileOperationProgressStage.Completed => $"{FormatOperationName(progress.Operation)} complete",
+                _ => $"{FormatOperationGerund(progress.Operation)}...",
+            };
+
+            CurrentItemText = string.IsNullOrWhiteSpace(progress.CurrentItemName)
+                ? string.Empty
+                : progress.CurrentItemName;
+
+            DetailText = FormatProgressDetail(progress);
+        }
+
+        public void MarkCancelling()
+        {
+            StatusText = "Cancelling...";
+            IsIndeterminate = true;
+        }
+
+        public void MarkCancelled()
+        {
+            StatusText = "Cancelled";
+            IsIndeterminate = false;
+        }
+
+        private static string FormatProgressDetail(FileOperationProgress progress)
+        {
+            if (progress.TotalBytes > 0)
+            {
+                return $"{FormatCompactByteCount(progress.CompletedBytes)} of {FormatCompactByteCount(progress.TotalBytes)}";
+            }
+
+            if (progress.TotalItems > 0)
+            {
+                return $"{Math.Min(progress.CompletedItems, progress.TotalItems)} of {progress.TotalItems} items";
+            }
+
+            return string.Empty;
+        }
+
+        private static string FormatOperationVerb(FileOperationKind operation)
+        {
+            return operation switch
+            {
+                FileOperationKind.Move => "move",
+                _ => "copy",
+            };
+        }
+
+        private static string FormatOperationName(FileOperationKind operation)
+        {
+            return operation switch
+            {
+                FileOperationKind.Move => "Move",
+                _ => "Copy",
+            };
+        }
+
+        private static string FormatOperationGerund(FileOperationKind operation)
+        {
+            return operation switch
+            {
+                FileOperationKind.Move => "Moving",
+                _ => "Copying",
+            };
+        }
+    }
 
     private FileClipboardState? _fileClipboard;
     private FileExplorerItemViewModel? _dropTargetFile;
@@ -1077,19 +1198,39 @@ public sealed partial class FileExplorerView : UserControl
             return;
         }
 
-        await RunFileOperationAsync(
-            async () =>
+        var operationKind = clipboard.Operation == FileClipboardOperation.Cut
+            ? FileOperationKind.Move
+            : FileOperationKind.Copy;
+        var result = await RunFileTransferOperationAsync(
+            operationKind,
+            clipboard.Paths.Count,
+            async (progress, cancellationToken) =>
             {
                 if (clipboard.Operation == FileClipboardOperation.Cut)
                 {
-                    await ViewModel.MoveFilesIntoCurrentDirectoryAsync(clipboard.Paths);
-                    ClearCutClipboard();
+                    await ViewModel.MoveFilesIntoCurrentDirectoryAsync(
+                        clipboard.Paths,
+                        progress,
+                        cancellationToken);
                     return;
                 }
 
-                await ViewModel.CopyFilesIntoCurrentDirectoryAsync(clipboard.Paths);
-            },
-            "Paste failed");
+                await ViewModel.CopyFilesIntoCurrentDirectoryAsync(
+                    clipboard.Paths,
+                    progress,
+                    cancellationToken);
+            });
+
+        if (result.Succeeded && clipboard.Operation == FileClipboardOperation.Cut)
+        {
+            ClearCutClipboard();
+        }
+
+        if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
+        {
+            await ShowFileOperationErrorDialogAsync("Paste failed", result.ErrorMessage);
+        }
+
         FileGridScrollViewer.Focus(FocusState.Programmatic);
     }
 
@@ -1330,6 +1471,102 @@ public sealed partial class FileExplorerView : UserControl
         }
     }
 
+    private async Task<FileTransferOperationResult> RunFileTransferOperationAsync(
+        FileOperationKind operationKind,
+        int itemCount,
+        Func<IProgress<FileOperationProgress>, CancellationToken, Task> operation)
+    {
+        using var operationCancellation = new CancellationTokenSource();
+        var progressState = new FileOperationProgressDialogState();
+        var progress = new Progress<FileOperationProgress>(progressState.Apply);
+        var isOperationComplete = false;
+        var dialog = CreateFileOperationProgressDialog(
+            CreateFileOperationTitle(operationKind, itemCount),
+            progressState);
+
+        void RequestCancel(ContentDialogButtonClickEventArgs args)
+        {
+            if (isOperationComplete)
+            {
+                return;
+            }
+
+            args.Cancel = true;
+            operationCancellation.Cancel();
+            progressState.MarkCancelling();
+        }
+
+        dialog.CloseButtonClick += (_, args) => RequestCancel(args);
+        dialog.Closing += (_, args) =>
+        {
+            if (isOperationComplete)
+            {
+                return;
+            }
+
+            args.Cancel = true;
+            operationCancellation.Cancel();
+            progressState.MarkCancelling();
+        };
+
+        IAsyncOperation<ContentDialogResult>? dialogOperation = null;
+        var isDialogClosed = false;
+
+        async Task CloseProgressDialogAsync()
+        {
+            if (isDialogClosed || dialogOperation is null)
+            {
+                return;
+            }
+
+            isOperationComplete = true;
+            dialog.Hide();
+            await dialogOperation;
+            isDialogClosed = true;
+        }
+
+        try
+        {
+            var operationTask = operation(progress, operationCancellation.Token);
+            var completedTask = await Task.WhenAny(
+                operationTask,
+                Task.Delay(ProgressDialogShowDelay));
+            if (completedTask != operationTask && !operationTask.IsCompleted)
+            {
+                dialogOperation = dialog.ShowAsync();
+            }
+
+            await operationTask;
+            isOperationComplete = true;
+            return new FileTransferOperationResult(
+                Succeeded: true,
+                Cancelled: false,
+                ErrorMessage: null);
+        }
+        catch (OperationCanceledException) when (operationCancellation.IsCancellationRequested)
+        {
+            isOperationComplete = true;
+            progressState.MarkCancelled();
+            return new FileTransferOperationResult(
+                Succeeded: false,
+                Cancelled: true,
+                ErrorMessage: null);
+        }
+        catch (Exception ex)
+        {
+            isOperationComplete = true;
+            await CloseProgressDialogAsync();
+            return new FileTransferOperationResult(
+                Succeeded: false,
+                Cancelled: false,
+                ErrorMessage: ex.Message);
+        }
+        finally
+        {
+            await CloseProgressDialogAsync();
+        }
+    }
+
     private async Task DropFilesIntoDirectoryAsync(
         DragEventArgs e,
         string destinationDirectoryPath)
@@ -1348,29 +1585,49 @@ public sealed partial class FileExplorerView : UserControl
         }
 
         var deferral = e.GetDeferral();
+        IReadOnlyList<string> paths;
+        var errorTitle = operation == DataPackageOperation.Move
+            ? "Move failed"
+            : "Copy failed";
         try
         {
-            var paths = await GetDroppedFilePathsAsync(e.DataView);
-            if (paths.Count == 0 ||
-                !CanDropPathsIntoDirectory(paths, destinationDirectoryPath))
-            {
-                return;
-            }
-
-            await RunFileOperationAsync(
-                () => operation == DataPackageOperation.Move
-                    ? ViewModel.MoveFilesIntoDirectoryAsync(paths, destinationDirectoryPath)
-                    : ViewModel.CopyFilesIntoDirectoryAsync(paths, destinationDirectoryPath),
-                operation == DataPackageOperation.Move
-                    ? "Move failed"
-                    : "Copy failed");
-            FileGridScrollViewer.Focus(FocusState.Programmatic);
+            paths = await GetDroppedFilePathsAsync(e.DataView);
         }
         finally
         {
             _draggedPaths = null;
             ClearDropTarget();
             deferral.Complete();
+        }
+
+        if (paths.Count == 0 ||
+            !CanDropPathsIntoDirectory(paths, destinationDirectoryPath))
+        {
+            return;
+        }
+
+        var operationKind = operation == DataPackageOperation.Move
+            ? FileOperationKind.Move
+            : FileOperationKind.Copy;
+        var result = await RunFileTransferOperationAsync(
+            operationKind,
+            paths.Count,
+            (progress, cancellationToken) => operation == DataPackageOperation.Move
+                ? ViewModel.MoveFilesIntoDirectoryAsync(
+                    paths,
+                    destinationDirectoryPath,
+                    progress,
+                    cancellationToken)
+                : ViewModel.CopyFilesIntoDirectoryAsync(
+                    paths,
+                    destinationDirectoryPath,
+                    progress,
+                    cancellationToken));
+        FileGridScrollViewer.Focus(FocusState.Programmatic);
+
+        if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
+        {
+            await ShowFileOperationErrorDialogAsync(errorTitle, result.ErrorMessage);
         }
     }
 
@@ -1467,6 +1724,97 @@ public sealed partial class FileExplorerView : UserControl
         };
 
         await dialog.ShowAsync();
+    }
+
+    private ContentDialog CreateFileOperationProgressDialog(
+        string title,
+        FileOperationProgressDialogState progressState)
+    {
+        var root = new StackPanel
+        {
+            Width = 460,
+            Spacing = 12,
+        };
+
+        var statusText = new TextBlock
+        {
+            FontSize = 16,
+            FontWeight = FontWeights.SemiBold,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextWrapping = TextWrapping.NoWrap,
+        };
+        statusText.SetBinding(
+            TextBlock.TextProperty,
+            CreateBinding(nameof(FileOperationProgressDialogState.StatusText), progressState));
+        root.Children.Add(statusText);
+
+        var progressBar = new ProgressBar
+        {
+            Height = 6,
+            Minimum = 0,
+            Maximum = 100,
+        };
+        progressBar.SetBinding(
+            ProgressBar.ValueProperty,
+            CreateBinding(nameof(FileOperationProgressDialogState.ProgressValue), progressState));
+        progressBar.SetBinding(
+            ProgressBar.IsIndeterminateProperty,
+            CreateBinding(nameof(FileOperationProgressDialogState.IsIndeterminate), progressState));
+        root.Children.Add(progressBar);
+
+        var currentItemText = new TextBlock
+        {
+            Foreground = GetThemeBrush("TextFillColorSecondaryBrush"),
+            MaxLines = 1,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        currentItemText.SetBinding(
+            TextBlock.TextProperty,
+            CreateBinding(nameof(FileOperationProgressDialogState.CurrentItemText), progressState));
+        root.Children.Add(currentItemText);
+
+        var detailText = new TextBlock
+        {
+            Foreground = GetThemeBrush("TextFillColorSecondaryBrush"),
+            MaxLines = 1,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        detailText.SetBinding(
+            TextBlock.TextProperty,
+            CreateBinding(nameof(FileOperationProgressDialogState.DetailText), progressState));
+        root.Children.Add(detailText);
+
+        return new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = title,
+            Content = root,
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+        };
+    }
+
+    private static Binding CreateBinding(
+        string path,
+        object source)
+    {
+        return new Binding
+        {
+            Path = new PropertyPath(path),
+            Source = source,
+            Mode = BindingMode.OneWay,
+        };
+    }
+
+    private static string CreateFileOperationTitle(
+        FileOperationKind operation,
+        int itemCount)
+    {
+        var itemText = itemCount == 1 ? "1 item" : $"{itemCount} items";
+
+        return operation == FileOperationKind.Move
+            ? $"Moving {itemText}"
+            : $"Copying {itemText}";
     }
 
     private MenuFlyout CreateSortMenuFlyout()
@@ -1801,6 +2149,28 @@ public sealed partial class FileExplorerView : UserControl
             : $"{size.ToString("0.#", CultureInfo.CurrentCulture)} {units[unitIndex]}";
 
         return $"{readableSize} ({clampedBytes.ToString("N0", CultureInfo.CurrentCulture)} bytes)";
+    }
+
+    private static string FormatCompactByteCount(long bytes)
+    {
+        var clampedBytes = Math.Max(0, bytes);
+        if (clampedBytes == 0)
+        {
+            return "0 bytes";
+        }
+
+        string[] units = ["bytes", "KB", "MB", "GB", "TB"];
+        var size = (double)clampedBytes;
+        var unitIndex = 0;
+        while (size >= 1024 && unitIndex < units.Length - 1)
+        {
+            size /= 1024;
+            unitIndex++;
+        }
+
+        return unitIndex == 0
+            ? $"{clampedBytes.ToString("N0", CultureInfo.CurrentCulture)} bytes"
+            : $"{size.ToString("0.#", CultureInfo.CurrentCulture)} {units[unitIndex]}";
     }
 
     private static string FormatDateTime(DateTimeOffset dateTime)

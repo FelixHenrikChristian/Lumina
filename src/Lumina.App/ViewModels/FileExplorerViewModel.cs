@@ -535,6 +535,17 @@ public sealed class FileExplorerViewModel : ObservableObject
         IReadOnlyList<string> sourcePaths,
         CancellationToken cancellationToken = default)
     {
+        await CopyFilesIntoCurrentDirectoryAsync(
+            sourcePaths,
+            progress: null,
+            cancellationToken);
+    }
+
+    public async Task CopyFilesIntoCurrentDirectoryAsync(
+        IReadOnlyList<string> sourcePaths,
+        IProgress<FileOperationProgress>? progress,
+        CancellationToken cancellationToken = default)
+    {
         ArgumentNullException.ThrowIfNull(sourcePaths);
 
         if (sourcePaths.Count == 0 || string.IsNullOrWhiteSpace(CurrentPath))
@@ -542,12 +553,29 @@ public sealed class FileExplorerViewModel : ObservableObject
             return;
         }
 
-        await CopyFilesIntoDirectoryAsync(sourcePaths, CurrentPath, cancellationToken);
+        await CopyFilesIntoDirectoryAsync(
+            sourcePaths,
+            CurrentPath,
+            progress,
+            cancellationToken);
     }
 
     public async Task CopyFilesIntoDirectoryAsync(
         IReadOnlyList<string> sourcePaths,
         string destinationDirectoryPath,
+        CancellationToken cancellationToken = default)
+    {
+        await CopyFilesIntoDirectoryAsync(
+            sourcePaths,
+            destinationDirectoryPath,
+            progress: null,
+            cancellationToken);
+    }
+
+    public async Task CopyFilesIntoDirectoryAsync(
+        IReadOnlyList<string> sourcePaths,
+        string destinationDirectoryPath,
+        IProgress<FileOperationProgress>? progress,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(sourcePaths);
@@ -562,6 +590,7 @@ public sealed class FileExplorerViewModel : ObservableObject
         var copiedPaths = await _fileBrowserService.CopyAsync(
             sourcePaths,
             normalizedDestinationPath,
+            progress,
             cancellationToken);
         await RefreshAfterFileTransferAsync(
             copiedPaths,
@@ -573,6 +602,17 @@ public sealed class FileExplorerViewModel : ObservableObject
         IReadOnlyList<string> sourcePaths,
         CancellationToken cancellationToken = default)
     {
+        await MoveFilesIntoCurrentDirectoryAsync(
+            sourcePaths,
+            progress: null,
+            cancellationToken);
+    }
+
+    public async Task MoveFilesIntoCurrentDirectoryAsync(
+        IReadOnlyList<string> sourcePaths,
+        IProgress<FileOperationProgress>? progress,
+        CancellationToken cancellationToken = default)
+    {
         ArgumentNullException.ThrowIfNull(sourcePaths);
 
         if (sourcePaths.Count == 0 || string.IsNullOrWhiteSpace(CurrentPath))
@@ -580,12 +620,29 @@ public sealed class FileExplorerViewModel : ObservableObject
             return;
         }
 
-        await MoveFilesIntoDirectoryAsync(sourcePaths, CurrentPath, cancellationToken);
+        await MoveFilesIntoDirectoryAsync(
+            sourcePaths,
+            CurrentPath,
+            progress,
+            cancellationToken);
     }
 
     public async Task MoveFilesIntoDirectoryAsync(
         IReadOnlyList<string> sourcePaths,
         string destinationDirectoryPath,
+        CancellationToken cancellationToken = default)
+    {
+        await MoveFilesIntoDirectoryAsync(
+            sourcePaths,
+            destinationDirectoryPath,
+            progress: null,
+            cancellationToken);
+    }
+
+    public async Task MoveFilesIntoDirectoryAsync(
+        IReadOnlyList<string> sourcePaths,
+        string destinationDirectoryPath,
+        IProgress<FileOperationProgress>? progress,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(sourcePaths);
@@ -600,6 +657,7 @@ public sealed class FileExplorerViewModel : ObservableObject
         var movedPaths = await _fileBrowserService.MoveAsync(
             sourcePaths,
             normalizedDestinationPath,
+            progress,
             cancellationToken);
         await RefreshAfterFileTransferAsync(
             movedPaths,

@@ -5,6 +5,8 @@ namespace Lumina.Core.Services;
 
 public sealed class FileSystemBrowserService : IFileBrowserService
 {
+    private const int FileCopyBufferSize = 1024 * 1024;
+
     private static readonly HashSet<string> ImagePreviewExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".avif",
@@ -161,11 +163,24 @@ public sealed class FileSystemBrowserService : IFileBrowserService
         string destinationDirectoryPath,
         CancellationToken cancellationToken = default)
     {
+        return CopyAsync(
+            sourcePaths,
+            destinationDirectoryPath,
+            progress: null,
+            cancellationToken);
+    }
+
+    public Task<IReadOnlyList<string>> CopyAsync(
+        IReadOnlyList<string> sourcePaths,
+        string destinationDirectoryPath,
+        IProgress<FileOperationProgress>? progress,
+        CancellationToken cancellationToken = default)
+    {
         ArgumentNullException.ThrowIfNull(sourcePaths);
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationDirectoryPath);
 
         return Task.Run(
-            () => Copy(sourcePaths, destinationDirectoryPath.Trim(), cancellationToken),
+            () => Copy(sourcePaths, destinationDirectoryPath.Trim(), progress, cancellationToken),
             cancellationToken);
     }
 
@@ -174,11 +189,24 @@ public sealed class FileSystemBrowserService : IFileBrowserService
         string destinationDirectoryPath,
         CancellationToken cancellationToken = default)
     {
+        return MoveAsync(
+            sourcePaths,
+            destinationDirectoryPath,
+            progress: null,
+            cancellationToken);
+    }
+
+    public Task<IReadOnlyList<string>> MoveAsync(
+        IReadOnlyList<string> sourcePaths,
+        string destinationDirectoryPath,
+        IProgress<FileOperationProgress>? progress,
+        CancellationToken cancellationToken = default)
+    {
         ArgumentNullException.ThrowIfNull(sourcePaths);
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationDirectoryPath);
 
         return Task.Run(
-            () => Move(sourcePaths, destinationDirectoryPath.Trim(), cancellationToken),
+            () => Move(sourcePaths, destinationDirectoryPath.Trim(), progress, cancellationToken),
             cancellationToken);
     }
 
@@ -301,10 +329,16 @@ public sealed class FileSystemBrowserService : IFileBrowserService
     private IReadOnlyList<string> Copy(
         IReadOnlyList<string> sourcePaths,
         string destinationDirectoryPath,
+        IProgress<FileOperationProgress>? progress,
         CancellationToken cancellationToken)
     {
         var destinationDirectory = GetExistingDirectory(destinationDirectoryPath);
         var copiedPaths = new List<string>(sourcePaths.Count);
+        var progressState = CreateProgressState(
+            FileOperationKind.Copy,
+            sourcePaths,
+            progress,
+            cancellationToken);
 
         foreach (var sourcePath in sourcePaths)
         {
@@ -316,9 +350,11 @@ public sealed class FileSystemBrowserService : IFileBrowserService
             var destinationPath = ResolveCopyDestinationPath(
                 normalizedSourcePath,
                 destinationDirectory.FullName);
-            CopyPath(normalizedSourcePath, destinationPath, cancellationToken);
+            CopyPath(normalizedSourcePath, destinationPath, progressState, cancellationToken);
             copiedPaths.Add(destinationPath);
         }
+
+        progressState.ReportCompleted();
 
         return copiedPaths;
     }
@@ -326,10 +362,16 @@ public sealed class FileSystemBrowserService : IFileBrowserService
     private IReadOnlyList<string> Move(
         IReadOnlyList<string> sourcePaths,
         string destinationDirectoryPath,
+        IProgress<FileOperationProgress>? progress,
         CancellationToken cancellationToken)
     {
         var destinationDirectory = GetExistingDirectory(destinationDirectoryPath);
         var movedPaths = new List<string>(sourcePaths.Count);
+        var progressState = CreateProgressState(
+            FileOperationKind.Move,
+            sourcePaths,
+            progress,
+            cancellationToken);
 
         foreach (var sourcePath in sourcePaths)
         {
@@ -343,6 +385,10 @@ public sealed class FileSystemBrowserService : IFileBrowserService
             if (IsSamePath(normalizedSourcePath, destinationPath))
             {
                 movedPaths.Add(normalizedSourcePath);
+                progressState.ReportItemCompleted(
+                    normalizedSourcePath,
+                    normalizedSourcePath,
+                    completedBytes: 0);
                 continue;
             }
 
@@ -352,6 +398,9 @@ public sealed class FileSystemBrowserService : IFileBrowserService
             {
                 throw new IOException($"Destination already exists: {destinationPath}");
             }
+
+            progressState.ReportItemStarted(normalizedSourcePath, destinationPath);
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (Directory.Exists(normalizedSourcePath))
             {
@@ -363,7 +412,13 @@ public sealed class FileSystemBrowserService : IFileBrowserService
             }
 
             movedPaths.Add(destinationPath);
+            progressState.ReportItemCompleted(
+                normalizedSourcePath,
+                destinationPath,
+                completedBytes: 0);
         }
+
+        progressState.ReportCompleted();
 
         return movedPaths;
     }
@@ -593,29 +648,226 @@ public sealed class FileSystemBrowserService : IFileBrowserService
     private static void CopyPath(
         string sourcePath,
         string destinationPath,
+        FileOperationProgressState progressState,
         CancellationToken cancellationToken)
     {
         if (Directory.Exists(sourcePath))
         {
+            progressState.ReportItemStarted(sourcePath, destinationPath);
+            cancellationToken.ThrowIfCancellationRequested();
             Directory.CreateDirectory(destinationPath);
 
-            foreach (var childPath in Directory.EnumerateFileSystemEntries(
-                         sourcePath,
-                         "*",
-                         EnumerationOptions))
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                foreach (var childPath in Directory.EnumerateFileSystemEntries(
+                             sourcePath,
+                             "*",
+                             EnumerationOptions))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
 
-                CopyPath(
-                    childPath,
-                    Path.Combine(destinationPath, Path.GetFileName(childPath)),
-                    cancellationToken);
+                    CopyPath(
+                        childPath,
+                        Path.Combine(destinationPath, Path.GetFileName(childPath)),
+                        progressState,
+                        cancellationToken);
+                }
             }
+            catch (OperationCanceledException)
+            {
+                TryDeleteDirectory(destinationPath);
+                throw;
+            }
+
+            CopyDirectoryMetadata(sourcePath, destinationPath);
+            progressState.ReportItemCompleted(
+                sourcePath,
+                destinationPath,
+                completedBytes: 0);
 
             return;
         }
 
-        File.Copy(sourcePath, destinationPath, overwrite: false);
+        CopyFile(sourcePath, destinationPath, progressState, cancellationToken);
+    }
+
+    private static void CopyFile(
+        string sourcePath,
+        string destinationPath,
+        FileOperationProgressState progressState,
+        CancellationToken cancellationToken)
+    {
+        progressState.ReportItemStarted(sourcePath, destinationPath);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var sourceInfo = new FileInfo(sourcePath);
+        try
+        {
+            using (var source = new FileStream(
+                       sourcePath,
+                       FileMode.Open,
+                       FileAccess.Read,
+                       FileShare.Read,
+                       FileCopyBufferSize,
+                       FileOptions.SequentialScan))
+            using (var destination = new FileStream(
+                       destinationPath,
+                       FileMode.CreateNew,
+                       FileAccess.Write,
+                       FileShare.None,
+                       FileCopyBufferSize,
+                       FileOptions.SequentialScan))
+            {
+                var buffer = new byte[FileCopyBufferSize];
+                while (true)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    var bytesRead = source.Read(buffer, 0, buffer.Length);
+                    if (bytesRead == 0)
+                    {
+                        break;
+                    }
+
+                    destination.Write(buffer, 0, bytesRead);
+                    progressState.ReportBytesCompleted(
+                        sourcePath,
+                        destinationPath,
+                        bytesRead);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            TryDeleteFile(destinationPath);
+            throw;
+        }
+
+        CopyFileMetadata(sourceInfo, destinationPath);
+        progressState.ReportItemCompleted(
+            sourcePath,
+            destinationPath,
+            completedBytes: 0);
+    }
+
+    private static void CopyDirectoryMetadata(string sourcePath, string destinationPath)
+    {
+        var sourceInfo = new DirectoryInfo(sourcePath);
+        var destinationInfo = new DirectoryInfo(destinationPath);
+
+        destinationInfo.CreationTimeUtc = sourceInfo.CreationTimeUtc;
+        destinationInfo.LastWriteTimeUtc = sourceInfo.LastWriteTimeUtc;
+        destinationInfo.Attributes = sourceInfo.Attributes;
+    }
+
+    private static void CopyFileMetadata(FileInfo sourceInfo, string destinationPath)
+    {
+        var destinationInfo = new FileInfo(destinationPath);
+
+        destinationInfo.CreationTimeUtc = sourceInfo.CreationTimeUtc;
+        destinationInfo.LastWriteTimeUtc = sourceInfo.LastWriteTimeUtc;
+        destinationInfo.Attributes = sourceInfo.Attributes;
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    private static FileOperationProgressState CreateProgressState(
+        FileOperationKind operation,
+        IReadOnlyList<string> sourcePaths,
+        IProgress<FileOperationProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var progressState = new FileOperationProgressState(operation, progress);
+        if (progress is null)
+        {
+            return progressState;
+        }
+
+        progressState.ReportPreparing();
+
+        if (operation == FileOperationKind.Copy)
+        {
+            var totals = CalculateTransferTotals(sourcePaths, cancellationToken);
+            progressState.SetTotals(totals);
+        }
+        else
+        {
+            progressState.SetTotals(new FileTransferTotals(sourcePaths.Count, 0));
+        }
+
+        progressState.ReportProcessing();
+
+        return progressState;
+    }
+
+    private static FileTransferTotals CalculateTransferTotals(
+        IReadOnlyList<string> sourcePaths,
+        CancellationToken cancellationToken)
+    {
+        var totals = new FileTransferTotals(0, 0);
+        foreach (var sourcePath in sourcePaths)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            totals += CalculateTransferTotals(GetExistingPath(sourcePath), cancellationToken);
+        }
+
+        return totals;
+    }
+
+    private static FileTransferTotals CalculateTransferTotals(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (Directory.Exists(path))
+        {
+            var totals = new FileTransferTotals(1, 0);
+            foreach (var childPath in Directory.EnumerateFileSystemEntries(
+                         path,
+                         "*",
+                         EnumerationOptions))
+            {
+                totals += CalculateTransferTotals(childPath, cancellationToken);
+            }
+
+            return totals;
+        }
+
+        var fileInfo = new FileInfo(path);
+        return new FileTransferTotals(1, fileInfo.Length);
     }
 
     private static string ResolveCopyDestinationPath(
@@ -763,6 +1015,127 @@ public sealed class FileSystemBrowserService : IFileBrowserService
             Path.DirectorySeparatorChar;
 
         return normalizedCandidate.StartsWith(normalizedParent, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private readonly record struct FileTransferTotals(
+        int TotalItems,
+        long TotalBytes)
+    {
+        public static FileTransferTotals operator +(
+            FileTransferTotals left,
+            FileTransferTotals right)
+        {
+            return new FileTransferTotals(
+                left.TotalItems + right.TotalItems,
+                left.TotalBytes + right.TotalBytes);
+        }
+    }
+
+    private sealed class FileOperationProgressState
+    {
+        private readonly FileOperationKind _operation;
+        private readonly IProgress<FileOperationProgress>? _progress;
+        private int _completedItems;
+        private long _completedBytes;
+        private int _totalItems;
+        private long _totalBytes;
+
+        public FileOperationProgressState(
+            FileOperationKind operation,
+            IProgress<FileOperationProgress>? progress)
+        {
+            _operation = operation;
+            _progress = progress;
+        }
+
+        public void SetTotals(FileTransferTotals totals)
+        {
+            _totalItems = totals.TotalItems;
+            _totalBytes = totals.TotalBytes;
+        }
+
+        public void ReportPreparing()
+        {
+            Report(FileOperationProgressStage.Preparing);
+        }
+
+        public void ReportProcessing()
+        {
+            Report(FileOperationProgressStage.Processing);
+        }
+
+        public void ReportItemStarted(
+            string sourcePath,
+            string destinationPath)
+        {
+            Report(
+                FileOperationProgressStage.Processing,
+                sourcePath,
+                destinationPath);
+        }
+
+        public void ReportBytesCompleted(
+            string sourcePath,
+            string destinationPath,
+            int completedBytes)
+        {
+            _completedBytes += completedBytes;
+            Report(
+                FileOperationProgressStage.Processing,
+                sourcePath,
+                destinationPath);
+        }
+
+        public void ReportItemCompleted(
+            string sourcePath,
+            string destinationPath,
+            long completedBytes)
+        {
+            _completedItems++;
+            _completedBytes += completedBytes;
+            Report(
+                FileOperationProgressStage.Processing,
+                sourcePath,
+                destinationPath);
+        }
+
+        public void ReportCompleted()
+        {
+            _completedItems = Math.Max(_completedItems, _totalItems);
+            _completedBytes = Math.Max(_completedBytes, _totalBytes);
+            Report(FileOperationProgressStage.Completed);
+        }
+
+        private void Report(
+            FileOperationProgressStage stage,
+            string sourcePath = "",
+            string destinationPath = "")
+        {
+            _progress?.Report(new FileOperationProgress
+            {
+                Operation = _operation,
+                Stage = stage,
+                SourcePath = sourcePath,
+                DestinationPath = destinationPath,
+                CurrentItemName = GetProgressItemName(sourcePath),
+                CompletedItems = _completedItems,
+                TotalItems = _totalItems,
+                CompletedBytes = _completedBytes,
+                TotalBytes = _totalBytes,
+            });
+        }
+
+        private static string GetProgressItemName(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return string.Empty;
+            }
+
+            var name = GetPathName(path);
+
+            return string.IsNullOrWhiteSpace(name) ? path : name;
+        }
     }
 
     private static void ValidateFileName(string fileName)
