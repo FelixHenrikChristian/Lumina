@@ -8,6 +8,7 @@ file explorer grid in `src/Lumina.App/Views/FileExplorerView`.
 | Input | Behavior |
 | --- | --- |
 | Click a file card | Selects that file or folder and focuses the file grid. |
+| Click a search result path badge | Opens the file or folder's containing directory and selects the result. |
 | Click empty grid space | Clears the current selection and focuses the file grid. |
 | Shift + click a file card | Extends selection from the current anchor to the clicked file card. |
 | Ctrl + click a file card | Toggles the clicked file card in or out of the selection. |

@@ -228,7 +228,7 @@ public sealed class FileSystemBrowserService : IFileBrowserService
                 .Select(info =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    return CreateFileItem(info);
+                    return CreateFileItem(info, directory.FullName);
                 })
                 .Where(item => MatchesQuery(item, query)),
             sortOptions,
@@ -368,7 +368,9 @@ public sealed class FileSystemBrowserService : IFileBrowserService
         return movedPaths;
     }
 
-    private FileItem CreateFileItem(FileSystemInfo info)
+    private FileItem CreateFileItem(
+        FileSystemInfo info,
+        string? relativeRootPath = null)
     {
         var isDirectory = info.Attributes.HasFlag(FileAttributes.Directory);
         var name = info.Name;
@@ -379,6 +381,7 @@ public sealed class FileSystemBrowserService : IFileBrowserService
             Name = name,
             DisplayName = string.IsNullOrWhiteSpace(displayName) ? name : displayName,
             Path = info.FullName,
+            RelativePath = ResolveRelativeDirectoryPath(relativeRootPath, info.FullName),
             IsDirectory = isDirectory,
             PreviewKind = isDirectory ? FilePreviewKind.None : ResolvePreviewKind(name),
             Size = isDirectory ? 0 : ((FileInfo)info).Length,
@@ -386,6 +389,24 @@ public sealed class FileSystemBrowserService : IFileBrowserService
             Created = new DateTimeOffset(info.CreationTimeUtc, TimeSpan.Zero),
             Tags = _tagParserService.ParseTagsFromFilename(name),
         };
+    }
+
+    private static string ResolveRelativeDirectoryPath(
+        string? relativeRootPath,
+        string path)
+    {
+        if (string.IsNullOrWhiteSpace(relativeRootPath))
+        {
+            return string.Empty;
+        }
+
+        var directoryPath = Path.GetDirectoryName(path);
+        if (string.IsNullOrWhiteSpace(directoryPath))
+        {
+            return string.Empty;
+        }
+
+        return Path.GetRelativePath(relativeRootPath, directoryPath);
     }
 
     private static FilePreviewKind ResolvePreviewKind(string fileName)

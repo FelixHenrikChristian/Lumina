@@ -114,6 +114,18 @@
             <Setter Property="UseSystemFocusVisuals" Value="False" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
+
+        <Style x:Key="SearchRelativePathButtonStyle" TargetType="Button">
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="7,3" />
+            <Setter Property="Background" Value="{ThemeResource ApplicationPageBackgroundThemeBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource ControlStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
     </UserControl.Resources>
 
     <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
@@ -557,6 +569,38 @@
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
+
+                                        <Button
+                                            x:Name="RelativePathButton"
+                                            Margin="8"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Bottom"
+                                            Click="RelativePathButton_Click"
+                                            IsTabStop="False"
+                                            MaxWidth="{Binding RelativePathBadgeMaxWidth}"
+                                            Style="{StaticResource SearchRelativePathButtonStyle}"
+                                            ToolTipService.ToolTip="{Binding RelativePathToolTip}"
+                                            Visibility="{Binding RelativePathBadgeVisibility}">
+                                            <Grid ColumnSpacing="4">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <FontIcon
+                                                    FontFamily="Segoe Fluent Icons"
+                                                    FontSize="10"
+                                                    Glyph="&#xE8B7;" />
+
+                                                <TextBlock
+                                                    Grid.Column="1"
+                                                    FontSize="11"
+                                                    MaxLines="1"
+                                                    Text="{Binding RelativePath}"
+                                                    TextTrimming="CharacterEllipsis"
+                                                    TextWrapping="NoWrap" />
+                                            </Grid>
+                                        </Button>
                                     </Grid>
 
                                     <Grid

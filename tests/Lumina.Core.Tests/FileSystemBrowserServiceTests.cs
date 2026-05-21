@@ -155,6 +155,27 @@ public sealed class FileSystemBrowserServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SearchDirectoryAsync_AssignsRelativeDirectoryPathFromSearchDirectory()
+    {
+        var childDirectory = Directory.CreateDirectory(Path.Combine(_temporaryDirectory, "Child"));
+        Directory.CreateDirectory(Path.Combine(childDirectory.FullName, "nested-match-folder"));
+        await File.WriteAllTextAsync(Path.Combine(_temporaryDirectory, "root-match.txt"), "root");
+        await File.WriteAllTextAsync(Path.Combine(childDirectory.FullName, "nested-match.txt"), "nested");
+
+        var items = await _service.SearchDirectoryAsync(_temporaryDirectory, "match");
+
+        Assert.Equal(
+            ".",
+            items.Single(item => item.Name == "root-match.txt").RelativePath);
+        Assert.Equal(
+            "Child",
+            items.Single(item => item.Name == "nested-match-folder").RelativePath);
+        Assert.Equal(
+            "Child",
+            items.Single(item => item.Name == "nested-match.txt").RelativePath);
+    }
+
+    [Fact]
     public async Task SearchDirectoryAsync_AppliesSortOptions()
     {
         await File.WriteAllTextAsync(Path.Combine(_temporaryDirectory, "alpha-match.txt"), "a");

@@ -337,7 +337,9 @@ public sealed class FileExplorerViewModel : ObservableObject
         var targetPath = NormalizeDirectoryPath(directoryPath);
         if (IsSameDirectory(CurrentPath, targetPath))
         {
-            await RefreshAsync(cancellationToken);
+            ClearSearchQuery();
+            ClearSelection();
+            await LoadCurrentDirectoryAsync(cancellationToken);
             return;
         }
 
@@ -351,6 +353,22 @@ public sealed class FileExplorerViewModel : ObservableObject
         ClearSearchQuery();
         ClearSelection();
         await LoadCurrentDirectoryAsync(cancellationToken);
+    }
+
+    public async Task OpenContainingDirectoryAsync(
+        FileExplorerItemViewModel file,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+
+        if (string.IsNullOrWhiteSpace(file.ContainingDirectoryPath))
+        {
+            return;
+        }
+
+        var selectedPath = file.Path;
+        await OpenDirectoryAsync(file.ContainingDirectoryPath, cancellationToken);
+        SelectFilesByPaths([selectedPath]);
     }
 
     public async Task NavigateBackAsync(CancellationToken cancellationToken = default)
@@ -948,7 +966,13 @@ public sealed class FileExplorerItemViewModel : ObservableObject
     public double CardWidth
     {
         get => _cardWidth;
-        private set => SetProperty(ref _cardWidth, value);
+        private set
+        {
+            if (SetProperty(ref _cardWidth, value))
+            {
+                OnPropertyChanged(nameof(RelativePathBadgeMaxWidth));
+            }
+        }
     }
 
     public double ThumbnailIconFontSize
@@ -1061,6 +1085,20 @@ public sealed class FileExplorerItemViewModel : ObservableObject
     public string FileSystemName => File.Name;
 
     public string Path => File.Path;
+
+    public string ContainingDirectoryPath => System.IO.Path.GetDirectoryName(Path) ?? string.Empty;
+
+    public string RelativePath => File.RelativePath;
+
+    public Visibility RelativePathBadgeVisibility => string.IsNullOrWhiteSpace(RelativePath)
+        ? Visibility.Collapsed
+        : Visibility.Visible;
+
+    public double RelativePathBadgeMaxWidth => Math.Max(44, CardWidth - 16);
+
+    public string RelativePathToolTip => string.IsNullOrWhiteSpace(RelativePath)
+        ? string.Empty
+        : $"Open containing folder: {RelativePath}";
 
     public bool IsDirectory => File.IsDirectory;
 

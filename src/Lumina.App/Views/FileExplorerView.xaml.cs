@@ -224,6 +224,22 @@ public sealed partial class FileExplorerView : UserControl
         CreateSortMenuFlyout().ShowAt(anchor);
     }
 
+    private async void RelativePathButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (GetFileFromSender(sender) is not { } file)
+        {
+            return;
+        }
+
+        CancelPendingSearch();
+        CancelInlineRename();
+        _isSearchTextComposing = false;
+
+        await ViewModel.OpenContainingDirectoryAsync(file);
+        EnsureSelectedFileVisible();
+        FileGridScrollViewer.Focus(FocusState.Programmatic);
+    }
+
     private async void SortFieldMenuItem_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not MenuFlyoutItem { Tag: FileSortField sortField } ||
@@ -264,6 +280,11 @@ public sealed partial class FileExplorerView : UserControl
             return;
         }
 
+        if (IsWithinRelativePathButton(e.OriginalSource))
+        {
+            return;
+        }
+
         if (GetFileFromSender(sender) is not { } file)
         {
             return;
@@ -287,7 +308,8 @@ public sealed partial class FileExplorerView : UserControl
 
     private async void FileCard_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
-        if (IsWithinInlineRenameBox(e.OriginalSource))
+        if (IsWithinInlineRenameBox(e.OriginalSource) ||
+            IsWithinRelativePathButton(e.OriginalSource))
         {
             e.Handled = true;
             return;
@@ -1901,6 +1923,22 @@ public sealed partial class FileExplorerView : UserControl
         while (dependencyObject is not null)
         {
             if (dependencyObject is TextBox { Name: "InlineRenameBox" })
+            {
+                return true;
+            }
+
+            dependencyObject = VisualTreeHelper.GetParent(dependencyObject);
+        }
+
+        return false;
+    }
+
+    private static bool IsWithinRelativePathButton(object? source)
+    {
+        var dependencyObject = source as DependencyObject;
+        while (dependencyObject is not null)
+        {
+            if (dependencyObject is FrameworkElement { Name: "RelativePathButton" })
             {
                 return true;
             }
