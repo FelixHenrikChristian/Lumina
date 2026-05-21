@@ -422,7 +422,14 @@
             Title="Folder error"
             Visibility="{Binding ErrorVisibility}" />
 
-        <Grid Grid.Row="2" Margin="24,16,24,24">
+        <Grid
+            x:Name="FileDropSurface"
+            Grid.Row="2"
+            Margin="24,16,24,24"
+            AllowDrop="True"
+            DragLeave="FileDropSurface_DragLeave"
+            DragOver="FileDropSurface_DragOver"
+            Drop="FileDropSurface_Drop">
             <StackPanel
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
@@ -505,15 +512,22 @@
                                 x:Name="FileCard"
                                 Width="{Binding CardWidth}"
                                 Height="{Binding CardHeight}"
+                                AllowDrop="{Binding IsDirectory}"
                                 AutomationProperties.Name="{Binding Name}"
                                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1"
+                                CanDrag="True"
                                 CornerRadius="6"
                                 DoubleTapped="FileCard_DoubleTapped"
+                                DragLeave="FileCard_DragLeave"
+                                DragOver="FileCard_DragOver"
+                                DragStarting="FileCard_DragStarting"
                                 Opacity="{Binding CardOpacity}"
                                 PointerPressed="FileCard_PointerPressed"
                                 RightTapped="FileCard_RightTapped"
+                                Drop="FileCard_Drop"
+                                DropCompleted="FileCard_DropCompleted"
                                 ToolTipService.ToolTip="{Binding Path=Path}">
                                 <Grid>
                                     <Grid.RowDefinitions>
@@ -658,6 +672,16 @@
                                             Text="{Binding RenameText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                             Visibility="{Binding RenameEditorVisibility}" />
                                     </Grid>
+
+                                    <Border
+                                        Grid.RowSpan="2"
+                                        Background="{ThemeResource AccentFillColorSecondaryBrush}"
+                                        BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                                        BorderThickness="2"
+                                        CornerRadius="6"
+                                        IsHitTestVisible="False"
+                                        Opacity="0.28"
+                                        Visibility="{Binding DropTargetVisibility}" />
 
                                     <Border
                                         Grid.RowSpan="2"

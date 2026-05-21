@@ -291,6 +291,22 @@ public sealed class FileSystemBrowserServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CopyAsync_DestinationNameExistsUsesExplorerStyleCopyName()
+    {
+        var sourcePath = Path.Combine(_temporaryDirectory, "source.txt");
+        var destinationDirectory = Directory.CreateDirectory(Path.Combine(_temporaryDirectory, "Destination"));
+        await File.WriteAllTextAsync(sourcePath, "copy");
+        await File.WriteAllTextAsync(Path.Combine(destinationDirectory.FullName, "source.txt"), "existing");
+
+        var copiedPaths = await _service.CopyAsync([sourcePath], destinationDirectory.FullName);
+
+        var copiedPath = Assert.Single(copiedPaths);
+        Assert.Equal(Path.Combine(destinationDirectory.FullName, "source - Copy.txt"), copiedPath);
+        Assert.Equal("copy", await File.ReadAllTextAsync(copiedPath));
+        Assert.Equal("existing", await File.ReadAllTextAsync(Path.Combine(destinationDirectory.FullName, "source.txt")));
+    }
+
+    [Fact]
     public async Task CopyAsync_CopiesDirectoryTree()
     {
         var sourceDirectory = Directory.CreateDirectory(Path.Combine(_temporaryDirectory, "Source Folder"));
@@ -320,6 +336,20 @@ public sealed class FileSystemBrowserServiceTests : IDisposable
         Assert.Equal(Path.Combine(destinationDirectory.FullName, "source.txt"), movedPath);
         Assert.False(File.Exists(sourcePath));
         Assert.Equal("move", await File.ReadAllTextAsync(movedPath));
+    }
+
+    [Fact]
+    public async Task MoveAsync_SameDirectoryReturnsOriginalPath()
+    {
+        var sourcePath = Path.Combine(_temporaryDirectory, "source.txt");
+        await File.WriteAllTextAsync(sourcePath, "move");
+
+        var movedPaths = await _service.MoveAsync([sourcePath], _temporaryDirectory);
+
+        var movedPath = Assert.Single(movedPaths);
+        Assert.Equal(sourcePath, movedPath);
+        Assert.True(File.Exists(sourcePath));
+        Assert.Equal("move", await File.ReadAllTextAsync(sourcePath));
     }
 
     [Fact]

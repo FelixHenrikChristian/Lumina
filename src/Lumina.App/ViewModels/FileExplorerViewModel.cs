@@ -542,11 +542,31 @@ public sealed class FileExplorerViewModel : ObservableObject
             return;
         }
 
+        await CopyFilesIntoDirectoryAsync(sourcePaths, CurrentPath, cancellationToken);
+    }
+
+    public async Task CopyFilesIntoDirectoryAsync(
+        IReadOnlyList<string> sourcePaths,
+        string destinationDirectoryPath,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sourcePaths);
+        ArgumentException.ThrowIfNullOrWhiteSpace(destinationDirectoryPath);
+
+        if (sourcePaths.Count == 0 || string.IsNullOrWhiteSpace(CurrentPath))
+        {
+            return;
+        }
+
+        var normalizedDestinationPath = NormalizeDirectoryPath(destinationDirectoryPath);
         var copiedPaths = await _fileBrowserService.CopyAsync(
             sourcePaths,
-            CurrentPath,
+            normalizedDestinationPath,
             cancellationToken);
-        await RefreshAndSelectAsync(copiedPaths, cancellationToken);
+        await RefreshAfterFileTransferAsync(
+            copiedPaths,
+            normalizedDestinationPath,
+            cancellationToken);
     }
 
     public async Task MoveFilesIntoCurrentDirectoryAsync(
@@ -560,11 +580,31 @@ public sealed class FileExplorerViewModel : ObservableObject
             return;
         }
 
+        await MoveFilesIntoDirectoryAsync(sourcePaths, CurrentPath, cancellationToken);
+    }
+
+    public async Task MoveFilesIntoDirectoryAsync(
+        IReadOnlyList<string> sourcePaths,
+        string destinationDirectoryPath,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sourcePaths);
+        ArgumentException.ThrowIfNullOrWhiteSpace(destinationDirectoryPath);
+
+        if (sourcePaths.Count == 0 || string.IsNullOrWhiteSpace(CurrentPath))
+        {
+            return;
+        }
+
+        var normalizedDestinationPath = NormalizeDirectoryPath(destinationDirectoryPath);
         var movedPaths = await _fileBrowserService.MoveAsync(
             sourcePaths,
-            CurrentPath,
+            normalizedDestinationPath,
             cancellationToken);
-        await RefreshAndSelectAsync(movedPaths, cancellationToken);
+        await RefreshAfterFileTransferAsync(
+            movedPaths,
+            normalizedDestinationPath,
+            cancellationToken);
     }
 
     private async Task LoadCurrentDirectoryAsync(CancellationToken cancellationToken)
@@ -725,6 +765,21 @@ public sealed class FileExplorerViewModel : ObservableObject
     {
         await LoadCurrentDirectoryAsync(cancellationToken);
         SelectFilesByPaths(selectedPaths);
+    }
+
+    private async Task RefreshAfterFileTransferAsync(
+        IReadOnlyList<string> transferredPaths,
+        string destinationDirectoryPath,
+        CancellationToken cancellationToken)
+    {
+        if (IsSameDirectory(CurrentPath, destinationDirectoryPath))
+        {
+            await RefreshAndSelectAsync(transferredPaths, cancellationToken);
+            return;
+        }
+
+        await LoadCurrentDirectoryAsync(cancellationToken);
+        SelectFilesByPaths([destinationDirectoryPath]);
     }
 
     private async Task ApplySortOptionsAsync(
@@ -936,6 +991,7 @@ public sealed class FileExplorerItemViewModel : ObservableObject
     private double _cardWidth;
     private bool _isFocused;
     private bool _isCut;
+    private bool _isDropTarget;
     private bool _isRenaming;
     private bool _isSelected;
     private string _renameText = string.Empty;
@@ -1018,6 +1074,18 @@ public sealed class FileExplorerItemViewModel : ObservableObject
         }
     }
 
+    public bool IsDropTarget
+    {
+        get => _isDropTarget;
+        set
+        {
+            if (SetProperty(ref _isDropTarget, value))
+            {
+                OnPropertyChanged(nameof(DropTargetVisibility));
+            }
+        }
+    }
+
     public bool IsRenaming
     {
         get => _isRenaming;
@@ -1055,6 +1123,10 @@ public sealed class FileExplorerItemViewModel : ObservableObject
         : Visibility.Collapsed;
 
     public Visibility FocusVisibility => IsFocused && !IsSelected
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public Visibility DropTargetVisibility => IsDropTarget
         ? Visibility.Visible
         : Visibility.Collapsed;
 

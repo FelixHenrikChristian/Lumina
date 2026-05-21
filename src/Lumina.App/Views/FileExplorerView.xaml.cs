@@ -26,6 +26,7 @@ public sealed partial class FileExplorerView : UserControl
     private const int KeyDownStateMask = 0x8000;
     private const uint InvalidFileSize = 0xFFFFFFFF;
     private const long DefaultAllocationUnitSize = 4096;
+    private const string LuminaFilePathsFormat = "Lumina.FileExplorer.Paths";
     private static readonly TimeSpan SearchDebounceDelay = TimeSpan.FromMilliseconds(400);
 
     private enum SelectionNavigationMode
@@ -56,6 +57,8 @@ public sealed partial class FileExplorerView : UserControl
         DateTimeOffset Modified);
 
     private FileClipboardState? _fileClipboard;
+    private FileExplorerItemViewModel? _dropTargetFile;
+    private IReadOnlyList<string>? _draggedPaths;
     private CancellationTokenSource? _searchDebounceCancellation;
     private TextBox? _searchTextBox;
     private FileExplorerItemViewModel? _renamingFile;
@@ -349,6 +352,122 @@ public sealed partial class FileExplorerView : UserControl
             });
 
         e.Handled = true;
+    }
+
+    private async void FileCard_DragStarting(UIElement sender, DragStartingEventArgs args)
+    {
+        if (GetFileFromSender(sender) is not { } file || file.IsRenaming)
+        {
+            args.Cancel = true;
+            return;
+        }
+
+        if (!file.IsSelected)
+        {
+            ViewModel.SelectFile(file);
+        }
+
+        var paths = ViewModel
+            .GetSelectedFilesOrFocusedFile()
+            .Select(selectedFile => selectedFile.Path)
+            .Where(path => !string.IsNullOrWhiteSpace(path) && PathExists(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (paths.Count == 0)
+        {
+            args.Cancel = true;
+            return;
+        }
+
+        _draggedPaths = paths;
+        args.AllowedOperations = DataPackageOperation.Copy | DataPackageOperation.Move;
+        args.Data.RequestedOperation = DataPackageOperation.Move;
+        args.Data.Properties.Title = paths.Count == 1
+            ? file.FileSystemName
+            : $"{paths.Count} items";
+        args.Data.SetData(LuminaFilePathsFormat, SerializeFilePaths(paths));
+
+        var deferral = args.GetDeferral();
+        try
+        {
+            var storageItems = await GetStorageItemsFromPathsAsync(paths);
+            if (storageItems.Count > 0)
+            {
+                args.Data.SetStorageItems(storageItems);
+            }
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+    }
+
+    private void FileCard_DropCompleted(UIElement sender, DropCompletedEventArgs args)
+    {
+        _draggedPaths = null;
+        ClearDropTarget();
+    }
+
+    private void FileCard_DragOver(object sender, DragEventArgs e)
+    {
+        if (GetFileFromSender(sender) is not { IsDirectory: true } file)
+        {
+            return;
+        }
+
+        var handled = TrySetAcceptedFileDropOperation(
+            e,
+            file.Path,
+            out var acceptedOperation);
+        if (!handled)
+        {
+            return;
+        }
+
+        SetDropTarget(acceptedOperation == DataPackageOperation.None ? null : file);
+        e.Handled = true;
+    }
+
+    private void FileCard_DragLeave(object sender, DragEventArgs e)
+    {
+        if (GetFileFromSender(sender) is { } file && ReferenceEquals(_dropTargetFile, file))
+        {
+            ClearDropTarget();
+        }
+    }
+
+    private async void FileCard_Drop(object sender, DragEventArgs e)
+    {
+        if (GetFileFromSender(sender) is not { IsDirectory: true } file)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        await DropFilesIntoDirectoryAsync(e, file.Path);
+    }
+
+    private void FileDropSurface_DragOver(object sender, DragEventArgs e)
+    {
+        ClearDropTarget();
+        if (TrySetAcceptedFileDropOperation(
+                e,
+                ViewModel.CurrentPath,
+                out _))
+        {
+            e.Handled = true;
+        }
+    }
+
+    private void FileDropSurface_DragLeave(object sender, DragEventArgs e)
+    {
+        ClearDropTarget();
+    }
+
+    private async void FileDropSurface_Drop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        await DropFilesIntoDirectoryAsync(e, ViewModel.CurrentPath);
     }
 
     private void FileGridScrollViewer_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
@@ -1211,6 +1330,132 @@ public sealed partial class FileExplorerView : UserControl
         }
     }
 
+    private async Task DropFilesIntoDirectoryAsync(
+        DragEventArgs e,
+        string destinationDirectoryPath)
+    {
+        if (string.IsNullOrWhiteSpace(destinationDirectoryPath))
+        {
+            ClearDropTarget();
+            return;
+        }
+
+        var operation = ResolveDropOperation(e.AllowedOperations);
+        if (operation == DataPackageOperation.None)
+        {
+            ClearDropTarget();
+            return;
+        }
+
+        var deferral = e.GetDeferral();
+        try
+        {
+            var paths = await GetDroppedFilePathsAsync(e.DataView);
+            if (paths.Count == 0 ||
+                !CanDropPathsIntoDirectory(paths, destinationDirectoryPath))
+            {
+                return;
+            }
+
+            await RunFileOperationAsync(
+                () => operation == DataPackageOperation.Move
+                    ? ViewModel.MoveFilesIntoDirectoryAsync(paths, destinationDirectoryPath)
+                    : ViewModel.CopyFilesIntoDirectoryAsync(paths, destinationDirectoryPath),
+                operation == DataPackageOperation.Move
+                    ? "Move failed"
+                    : "Copy failed");
+            FileGridScrollViewer.Focus(FocusState.Programmatic);
+        }
+        finally
+        {
+            _draggedPaths = null;
+            ClearDropTarget();
+            deferral.Complete();
+        }
+    }
+
+    private bool TrySetAcceptedFileDropOperation(
+        DragEventArgs e,
+        string destinationDirectoryPath,
+        out DataPackageOperation acceptedOperation)
+    {
+        acceptedOperation = DataPackageOperation.None;
+        if (string.IsNullOrWhiteSpace(destinationDirectoryPath) ||
+            !ContainsFileDropData(e.DataView))
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            return false;
+        }
+
+        acceptedOperation = ResolveDropOperation(e.AllowedOperations);
+        if (acceptedOperation != DataPackageOperation.None &&
+            _draggedPaths is not null &&
+            !CanDropPathsIntoDirectory(_draggedPaths, destinationDirectoryPath))
+        {
+            acceptedOperation = DataPackageOperation.None;
+        }
+
+        e.AcceptedOperation = acceptedOperation;
+        if (acceptedOperation != DataPackageOperation.None)
+        {
+            e.DragUIOverride.Caption = acceptedOperation == DataPackageOperation.Copy
+                ? "Copy here"
+                : "Move here";
+            e.DragUIOverride.IsCaptionVisible = true;
+        }
+
+        return true;
+    }
+
+    private static DataPackageOperation ResolveDropOperation(
+        DataPackageOperation allowedOperations)
+    {
+        if (allowedOperations == DataPackageOperation.None)
+        {
+            allowedOperations = DataPackageOperation.Copy | DataPackageOperation.Move;
+        }
+
+        if (IsKeyDown(VirtualKey.Control) &&
+            allowedOperations.HasFlag(DataPackageOperation.Copy))
+        {
+            return DataPackageOperation.Copy;
+        }
+
+        if (allowedOperations.HasFlag(DataPackageOperation.Move))
+        {
+            return DataPackageOperation.Move;
+        }
+
+        return allowedOperations.HasFlag(DataPackageOperation.Copy)
+            ? DataPackageOperation.Copy
+            : DataPackageOperation.None;
+    }
+
+    private void SetDropTarget(FileExplorerItemViewModel? file)
+    {
+        if (ReferenceEquals(_dropTargetFile, file))
+        {
+            return;
+        }
+
+        if (_dropTargetFile is not null)
+        {
+            _dropTargetFile.IsDropTarget = false;
+        }
+
+        _dropTargetFile = file;
+
+        if (_dropTargetFile is not null)
+        {
+            _dropTargetFile.IsDropTarget = true;
+        }
+    }
+
+    private void ClearDropTarget()
+    {
+        SetDropTarget(null);
+    }
+
     private async Task ShowFileOperationErrorDialogAsync(string title, string message)
     {
         var dialog = new ContentDialog
@@ -1643,21 +1888,7 @@ public sealed partial class FileExplorerView : UserControl
     {
         try
         {
-            var storageItems = new List<IStorageItem>(paths.Count);
-            foreach (var path in paths)
-            {
-                if (Directory.Exists(path))
-                {
-                    storageItems.Add(await StorageFolder.GetFolderFromPathAsync(path));
-                    continue;
-                }
-
-                if (File.Exists(path))
-                {
-                    storageItems.Add(await StorageFile.GetFileFromPathAsync(path));
-                }
-            }
-
+            var storageItems = await GetStorageItemsFromPathsAsync(paths);
             if (storageItems.Count != paths.Count)
             {
                 return;
@@ -1675,6 +1906,101 @@ public sealed partial class FileExplorerView : UserControl
         catch (Exception)
         {
         }
+    }
+
+    private static async Task<IReadOnlyList<IStorageItem>> GetStorageItemsFromPathsAsync(
+        IReadOnlyList<string> paths)
+    {
+        var storageItems = new List<IStorageItem>(paths.Count);
+        foreach (var path in paths)
+        {
+            try
+            {
+                if (Directory.Exists(path))
+                {
+                    storageItems.Add(await StorageFolder.GetFolderFromPathAsync(path));
+                    continue;
+                }
+
+                if (File.Exists(path))
+                {
+                    storageItems.Add(await StorageFile.GetFileFromPathAsync(path));
+                }
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        return storageItems;
+    }
+
+    private static bool ContainsFileDropData(DataPackageView dataView)
+    {
+        return dataView.Contains(LuminaFilePathsFormat) ||
+            dataView.Contains(StandardDataFormats.StorageItems);
+    }
+
+    private static async Task<IReadOnlyList<string>> GetDroppedFilePathsAsync(
+        DataPackageView dataView)
+    {
+        if (dataView.Contains(LuminaFilePathsFormat))
+        {
+            var data = await dataView.GetDataAsync(LuminaFilePathsFormat);
+            return ParseFilePaths(data?.ToString() ?? string.Empty);
+        }
+
+        if (!dataView.Contains(StandardDataFormats.StorageItems))
+        {
+            return [];
+        }
+
+        var storageItems = await dataView.GetStorageItemsAsync();
+        return storageItems
+            .Select(item => item.Path)
+            .Where(path => !string.IsNullOrWhiteSpace(path) && PathExists(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string SerializeFilePaths(IReadOnlyList<string> paths)
+    {
+        return string.Join('\n', paths);
+    }
+
+    private static IReadOnlyList<string> ParseFilePaths(string serializedPaths)
+    {
+        return serializedPaths
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(path => PathExists(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static bool CanDropPathsIntoDirectory(
+        IReadOnlyList<string> sourcePaths,
+        string destinationDirectoryPath)
+    {
+        if (string.IsNullOrWhiteSpace(destinationDirectoryPath))
+        {
+            return false;
+        }
+
+        foreach (var sourcePath in sourcePaths)
+        {
+            if (!Directory.Exists(sourcePath))
+            {
+                continue;
+            }
+
+            if (IsSameFileSystemPath(sourcePath, destinationDirectoryPath) ||
+                IsSubPathOf(destinationDirectoryPath, sourcePath))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static async Task<FileClipboardState?> TryGetSystemClipboardAsync()
@@ -1821,6 +2147,32 @@ public sealed partial class FileExplorerView : UserControl
         {
             return path.Trim();
         }
+    }
+
+    private static bool IsSameFileSystemPath(string left, string right)
+    {
+        return string.Equals(
+            NormalizeClipboardPath(left).TrimEnd(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar),
+            NormalizeClipboardPath(right).TrimEnd(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSubPathOf(string candidatePath, string parentPath)
+    {
+        var normalizedCandidate = NormalizeClipboardPath(candidatePath)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) +
+            Path.DirectorySeparatorChar;
+        var normalizedParent = NormalizeClipboardPath(parentPath)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) +
+            Path.DirectorySeparatorChar;
+
+        return normalizedCandidate.StartsWith(
+            normalizedParent,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsRightButtonPressed(
