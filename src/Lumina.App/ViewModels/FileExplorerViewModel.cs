@@ -1236,7 +1236,7 @@ public sealed class FileExplorerViewModel : ObservableObject
                 tag.Color,
                 tag.TextColor ?? "#ffffff",
                 "#00000000",
-                new Thickness(0));
+                new Thickness(1));
         }
 
         return styles;
