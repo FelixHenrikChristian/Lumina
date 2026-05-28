@@ -37,6 +37,7 @@ public sealed class FileExplorerViewModel : ObservableObject
     private FileExplorerItemViewModel? _selectionAnchor;
     private FileSortOptions _sortOptions = FileSortOptions.Default;
     private int _zoomLevelIndex = DefaultZoomLevelIndex;
+    private LocationPathScope? _currentLocationScope;
 
     public FileExplorerViewModel()
         : this(new FileSystemBrowserService(), new ShellFileThumbnailService())
@@ -76,15 +77,22 @@ public sealed class FileExplorerViewModel : ObservableObject
     public string CurrentLocationName
     {
         get => _currentLocationName;
-        private set => SetProperty(ref _currentLocationName, value);
+        private set
+        {
+            if (SetProperty(ref _currentLocationName, value))
+            {
+                OnPropertyChanged(nameof(BreadcrumbText));
+                OnPropertyChanged(nameof(BreadcrumbItems));
+            }
+        }
     }
 
     public string BreadcrumbText => string.IsNullOrWhiteSpace(CurrentPath)
         ? "No location selected"
-        : CurrentPath;
+        : _currentLocationScope?.GetDisplayPath(CurrentPath, CurrentLocationName) ?? CurrentPath;
 
     public IReadOnlyList<FileExplorerBreadcrumbItemViewModel> BreadcrumbItems =>
-        BuildBreadcrumbItems(CurrentPath);
+        BuildBreadcrumbItems(_currentLocationScope, CurrentLocationName, CurrentPath);
 
     public string SearchPlaceholderText => string.IsNullOrWhiteSpace(CurrentPath)
         ? "Search"
@@ -118,11 +126,11 @@ public sealed class FileExplorerViewModel : ObservableObject
 
     public bool CanSearch => !string.IsNullOrWhiteSpace(CurrentPath);
 
-    public bool CanNavigateBack => _backStack.Count > 0;
+    public bool CanNavigateBack => HasContainedPath(_backStack);
 
-    public bool CanNavigateForward => _forwardStack.Count > 0;
+    public bool CanNavigateForward => HasContainedPath(_forwardStack);
 
-    public bool CanNavigateToParent => !string.IsNullOrWhiteSpace(GetParentDirectoryPath(CurrentPath));
+    public bool CanNavigateToParent => TryGetParentDirectoryPath(out _);
 
     public bool CanUseFolderCommands => !IsBusy && !string.IsNullOrWhiteSpace(CurrentPath);
 
@@ -170,9 +178,33 @@ public sealed class FileExplorerViewModel : ObservableObject
         _loadCancellation?.Cancel();
         CancelPendingThumbnailLoading();
 
+        LocationPathScope? nextLocationScope = null;
+        try
+        {
+            nextLocationScope = location is null
+                ? null
+                : new LocationPathScope(location.Path);
+        }
+        catch (Exception ex)
+        {
+            _currentLocation = location;
+            _currentLocationScope = null;
+            CurrentPath = string.Empty;
+            CurrentLocationName = location?.Name ?? string.Empty;
+            ClearSearchQuery();
+            _backStack.Clear();
+            _forwardStack.Clear();
+            ClearSelection();
+            Files.Clear();
+            ErrorMessage = $"Failed to open location: {ex.Message}";
+            OnComputedStateChanged();
+            return;
+        }
+
         _currentLocation = location;
+        _currentLocationScope = nextLocationScope;
+        CurrentPath = _currentLocationScope?.RootPath ?? string.Empty;
         CurrentLocationName = location?.Name ?? string.Empty;
-        CurrentPath = location?.Path ?? string.Empty;
         ClearSearchQuery();
         _backStack.Clear();
         _forwardStack.Clear();
@@ -328,13 +360,25 @@ public sealed class FileExplorerViewModel : ObservableObject
         return SelectedFile is null ? [] : [SelectedFile];
     }
 
+    public bool ContainsPathInCurrentLocation(string path)
+    {
+        return _currentLocationScope?.ContainsPath(path) == true;
+    }
+
+    public bool ContainsPathsInCurrentLocation(IReadOnlyList<string> paths)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+
+        return paths.Count > 0 && paths.All(ContainsPathInCurrentLocation);
+    }
+
     public async Task OpenDirectoryAsync(
         string directoryPath,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(directoryPath);
 
-        var targetPath = NormalizeDirectoryPath(directoryPath);
+        var targetPath = NormalizeContainedPath(directoryPath);
         if (IsSameDirectory(CurrentPath, targetPath))
         {
             ClearSearchQuery();
@@ -373,12 +417,11 @@ public sealed class FileExplorerViewModel : ObservableObject
 
     public async Task NavigateBackAsync(CancellationToken cancellationToken = default)
     {
-        if (_backStack.Count == 0)
+        if (!TryPopContainedPath(_backStack, out var targetPath))
         {
             return;
         }
 
-        var targetPath = PopLast(_backStack);
         if (!string.IsNullOrWhiteSpace(CurrentPath))
         {
             _forwardStack.Add(CurrentPath);
@@ -392,12 +435,11 @@ public sealed class FileExplorerViewModel : ObservableObject
 
     public async Task NavigateForwardAsync(CancellationToken cancellationToken = default)
     {
-        if (_forwardStack.Count == 0)
+        if (!TryPopContainedPath(_forwardStack, out var targetPath))
         {
             return;
         }
 
-        var targetPath = PopLast(_forwardStack);
         if (!string.IsNullOrWhiteSpace(CurrentPath))
         {
             _backStack.Add(CurrentPath);
@@ -411,8 +453,7 @@ public sealed class FileExplorerViewModel : ObservableObject
 
     public async Task NavigateToParentAsync(CancellationToken cancellationToken = default)
     {
-        var parentPath = GetParentDirectoryPath(CurrentPath);
-        if (string.IsNullOrWhiteSpace(parentPath))
+        if (!TryGetParentDirectoryPath(out var parentPath))
         {
             return;
         }
@@ -477,8 +518,9 @@ public sealed class FileExplorerViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(file);
         ArgumentException.ThrowIfNullOrWhiteSpace(newName);
 
+        var sourcePath = NormalizeContainedPath(file.Path);
         var result = await _fileBrowserService.RenameWithResultAsync(
-            file.Path,
+            sourcePath,
             newName,
             cancellationToken);
         await RefreshAndSelectAsync(result.Paths, cancellationToken);
@@ -496,8 +538,9 @@ public sealed class FileExplorerViewModel : ObservableObject
 
         ClearSearchQuery();
 
+        var currentPath = NormalizeContainedPath(CurrentPath);
         var result = await _fileBrowserService.CreateDirectoryWithResultAsync(
-            CurrentPath,
+            currentPath,
             DefaultNewFolderName,
             cancellationToken);
         await RefreshAndSelectAsync(result.Paths, cancellationToken);
@@ -522,7 +565,9 @@ public sealed class FileExplorerViewModel : ObservableObject
             .Where(index => index >= 0)
             .DefaultIfEmpty(0)
             .Min();
-        var paths = files.Select(file => file.Path).ToList();
+        var paths = files
+            .Select(file => NormalizeContainedPath(file.Path))
+            .ToList();
 
         var result = await _fileBrowserService.DeleteWithResultAsync(
             paths,
@@ -598,9 +643,10 @@ public sealed class FileExplorerViewModel : ObservableObject
             return null;
         }
 
-        var normalizedDestinationPath = NormalizeDirectoryPath(destinationDirectoryPath);
+        var normalizedSourcePaths = NormalizeContainedPaths(sourcePaths);
+        var normalizedDestinationPath = NormalizeContainedPath(destinationDirectoryPath);
         var result = await _fileBrowserService.CopyWithResultAsync(
-            sourcePaths,
+            normalizedSourcePaths,
             normalizedDestinationPath,
             progress,
             conflictResolver,
@@ -673,9 +719,10 @@ public sealed class FileExplorerViewModel : ObservableObject
             return null;
         }
 
-        var normalizedDestinationPath = NormalizeDirectoryPath(destinationDirectoryPath);
+        var normalizedSourcePaths = NormalizeContainedPaths(sourcePaths);
+        var normalizedDestinationPath = NormalizeContainedPath(destinationDirectoryPath);
         var result = await _fileBrowserService.MoveWithResultAsync(
-            sourcePaths,
+            normalizedSourcePaths,
             normalizedDestinationPath,
             progress,
             conflictResolver,
@@ -694,6 +741,7 @@ public sealed class FileExplorerViewModel : ObservableObject
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(operationResult);
+        EnsureOperationResultPathsAreContained(operationResult);
 
         await _fileBrowserService.UndoFileOperationAsync(
             operationResult,
@@ -708,6 +756,7 @@ public sealed class FileExplorerViewModel : ObservableObject
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(operationResult);
+        EnsureOperationResultPathsAreContained(operationResult);
 
         await _fileBrowserService.RedoFileOperationAsync(
             operationResult,
@@ -718,7 +767,7 @@ public sealed class FileExplorerViewModel : ObservableObject
 
     private async Task LoadCurrentDirectoryAsync(CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(CurrentPath))
+        if (string.IsNullOrWhiteSpace(CurrentPath) || _currentLocationScope is null)
         {
             return;
         }
@@ -736,13 +785,14 @@ public sealed class FileExplorerViewModel : ObservableObject
 
         try
         {
+            var currentPath = NormalizeContainedPath(CurrentPath);
             var files = string.IsNullOrWhiteSpace(SearchQuery)
                 ? await _fileBrowserService.LoadDirectoryAsync(
-                    CurrentPath,
+                    currentPath,
                     _sortOptions,
                     loadCancellation.Token)
                 : await _fileBrowserService.SearchDirectoryAsync(
-                    CurrentPath,
+                    currentPath,
                     SearchQuery,
                     _sortOptions,
                     loadCancellation.Token);
@@ -974,79 +1024,91 @@ public sealed class FileExplorerViewModel : ObservableObject
         return Math.Clamp((int)Math.Ceiling(cardWidth * 2), 128, 1024);
     }
 
+    private string NormalizeContainedPath(string path)
+    {
+        return _currentLocationScope?.NormalizeContainedPath(path)
+            ?? throw new InvalidOperationException("No location is selected.");
+    }
+
+    private IReadOnlyList<string> NormalizeContainedPaths(IReadOnlyList<string> paths)
+    {
+        return paths.Select(NormalizeContainedPath).ToList();
+    }
+
+    private bool HasContainedPath(List<string> paths)
+    {
+        return _currentLocationScope is not null &&
+            paths.Any(path => _currentLocationScope.ContainsPath(path));
+    }
+
+    private bool TryPopContainedPath(
+        List<string> paths,
+        out string path)
+    {
+        path = string.Empty;
+        while (paths.Count > 0)
+        {
+            var candidatePath = PopLast(paths);
+            if (_currentLocationScope?.TryNormalizeContainedPath(candidatePath, out path) == true)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool TryGetParentDirectoryPath(out string parentPath)
+    {
+        parentPath = string.Empty;
+
+        return _currentLocationScope?.TryGetParentPath(CurrentPath, out parentPath) == true;
+    }
+
+    private void EnsureOperationResultPathsAreContained(FileOperationResult operationResult)
+    {
+        foreach (var entry in operationResult.Entries)
+        {
+            EnsureOperationPathIsContained(entry.SourcePath);
+            EnsureOperationPathIsContained(entry.DestinationPath);
+        }
+    }
+
+    private void EnsureOperationPathIsContained(string path)
+    {
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            NormalizeContainedPath(path);
+        }
+    }
+
     private static string NormalizeDirectoryPath(string directoryPath)
     {
         return Path.GetFullPath(directoryPath.Trim());
     }
 
-    private static IReadOnlyList<FileExplorerBreadcrumbItemViewModel> BuildBreadcrumbItems(string directoryPath)
+    private static IReadOnlyList<FileExplorerBreadcrumbItemViewModel> BuildBreadcrumbItems(
+        LocationPathScope? locationScope,
+        string locationName,
+        string directoryPath)
     {
-        if (string.IsNullOrWhiteSpace(directoryPath))
+        if (locationScope is null || string.IsNullOrWhiteSpace(directoryPath))
         {
             return [new FileExplorerBreadcrumbItemViewModel("No location selected", string.Empty)];
         }
 
-        var normalizedPath = TryNormalizePath(directoryPath);
-        var root = Path.GetPathRoot(normalizedPath);
-        if (string.IsNullOrWhiteSpace(root))
-        {
-            return [new FileExplorerBreadcrumbItemViewModel(normalizedPath, normalizedPath)];
-        }
-
-        var items = new List<FileExplorerBreadcrumbItemViewModel>
-        {
-            new("This PC", string.Empty),
-            new(
-                root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
-                root),
-        };
-        var remainder = normalizedPath[root.Length..]
-            .Trim(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-        if (!string.IsNullOrWhiteSpace(remainder))
-        {
-            var currentPath = root;
-            foreach (var segment in remainder.Split(
-                [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
-                StringSplitOptions.RemoveEmptyEntries))
-            {
-                currentPath = Path.Combine(currentPath, segment);
-                items.Add(new FileExplorerBreadcrumbItemViewModel(segment, currentPath));
-            }
-        }
-
-        return items;
+        return locationScope
+            .GetBreadcrumbs(directoryPath, locationName)
+            .Select(item => new FileExplorerBreadcrumbItemViewModel(item.Name, item.Path))
+            .ToList();
     }
 
     private static string GetCurrentFolderName(string directoryPath)
     {
-        var normalizedPath = TryNormalizePath(directoryPath);
-        var trimmedPath = normalizedPath.TrimEnd(
-            Path.DirectorySeparatorChar,
-            Path.AltDirectorySeparatorChar);
-        var folderName = Path.GetFileName(trimmedPath);
+        var normalizedPath = NormalizeDirectoryPath(directoryPath);
+        var folderName = Path.GetFileName(Path.TrimEndingDirectorySeparator(normalizedPath));
 
-        if (!string.IsNullOrWhiteSpace(folderName))
-        {
-            return folderName;
-        }
-
-        var root = Path.GetPathRoot(normalizedPath)?
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-        return string.IsNullOrWhiteSpace(root) ? "current folder" : root;
-    }
-
-    private static string TryNormalizePath(string directoryPath)
-    {
-        try
-        {
-            return NormalizeDirectoryPath(directoryPath);
-        }
-        catch (Exception)
-        {
-            return directoryPath.Trim();
-        }
+        return string.IsNullOrWhiteSpace(folderName) ? "current folder" : folderName;
     }
 
     private static bool IsSameDirectory(string left, string right)
@@ -1060,23 +1122,6 @@ public sealed class FileExplorerViewModel : ObservableObject
             NormalizeDirectoryPath(left),
             NormalizeDirectoryPath(right),
             StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string? GetParentDirectoryPath(string directoryPath)
-    {
-        if (string.IsNullOrWhiteSpace(directoryPath))
-        {
-            return null;
-        }
-
-        try
-        {
-            return Directory.GetParent(directoryPath)?.FullName;
-        }
-        catch (Exception)
-        {
-            return null;
-        }
     }
 
     private static string PopLast(List<string> paths)

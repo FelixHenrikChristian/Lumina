@@ -295,6 +295,9 @@ public sealed partial class FileExplorerView : UserControl
         CancelInlineRename();
         _isSearchTextComposing = false;
         await ViewModel.OpenLocationAsync(e.Location);
+        _undoStack.Clear();
+        _redoStack.Clear();
+        UpdateHistoryCommandState();
         ScrollToTop();
     }
 
@@ -1335,6 +1338,14 @@ public sealed partial class FileExplorerView : UserControl
             return;
         }
 
+        if (!ViewModel.ContainsPathsInCurrentLocation(clipboard.Paths))
+        {
+            await ShowFileOperationErrorDialogAsync(
+                "Paste failed",
+                "Only files inside the current location can be copied or moved.");
+            return;
+        }
+
         var operationKind = clipboard.Operation == FileClipboardOperation.Cut
             ? FileOperationKind.Move
             : FileOperationKind.Copy;
@@ -1957,6 +1968,15 @@ public sealed partial class FileExplorerView : UserControl
             return;
         }
 
+        if (!ViewModel.ContainsPathInCurrentLocation(destinationDirectoryPath) ||
+            !ViewModel.ContainsPathsInCurrentLocation(paths))
+        {
+            await ShowFileOperationErrorDialogAsync(
+                errorTitle,
+                "Only files inside the current location can be copied or moved.");
+            return;
+        }
+
         var operationKind = operation == DataPackageOperation.Move
             ? FileOperationKind.Move
             : FileOperationKind.Copy;
@@ -2009,7 +2029,9 @@ public sealed partial class FileExplorerView : UserControl
         acceptedOperation = ResolveDropOperation(e.AllowedOperations);
         if (acceptedOperation != DataPackageOperation.None &&
             _draggedPaths is not null &&
-            !CanDropPathsIntoDirectory(_draggedPaths, destinationDirectoryPath))
+            (!ViewModel.ContainsPathInCurrentLocation(destinationDirectoryPath) ||
+                !ViewModel.ContainsPathsInCurrentLocation(_draggedPaths) ||
+                !CanDropPathsIntoDirectory(_draggedPaths, destinationDirectoryPath)))
         {
             acceptedOperation = DataPackageOperation.None;
         }
