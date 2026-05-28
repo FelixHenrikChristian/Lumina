@@ -9,4 +9,6 @@ public interface ITagParserService
     string GetDisplayNameWithoutExtension(string filename);
 
     string InsertTagIntoFilename(string filename, string tag, int insertionIndex);
+
+    string RemoveTagFromFilename(string filename, string tag);
 }

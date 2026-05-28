@@ -70,6 +70,10 @@ public sealed partial class FileExplorerView : UserControl
         DateTimeOffset Created,
         DateTimeOffset Modified);
 
+    private sealed record FileTagMenuContext(
+        FileExplorerItemViewModel File,
+        string TagName);
+
     private sealed class FileOperationProgressDialogState : ObservableObject
     {
         private string _statusText = "Preparing...";
@@ -647,6 +651,82 @@ public sealed partial class FileExplorerView : UserControl
         _draggedPaths = null;
         ClearDropTarget();
         ClearTagDropPreview();
+    }
+
+    private void FileTagChip_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement anchor ||
+            GetFileTagChipFromSender(sender) is not { IsPreview: false } tag ||
+            GetFileFromTagChipSender(sender) is not { } file ||
+            file.IsDirectory ||
+            file.IsRenaming)
+        {
+            return;
+        }
+
+        CancelInlineRename();
+        FocusFileForContextMenu(file);
+
+        var flyout = new MenuFlyout();
+        var deleteItem = new MenuFlyoutItem
+        {
+            Text = "Delete tag",
+            Tag = new FileTagMenuContext(file, tag.Name),
+            Icon = new FontIcon
+            {
+                FontFamily = new FontFamily("Segoe Fluent Icons"),
+                Glyph = "\uE74D",
+            },
+        };
+        deleteItem.Click += DeleteFileTagMenuItem_Click;
+        flyout.Items.Add(deleteItem);
+        flyout.ShowAt(
+            anchor,
+            new FlyoutShowOptions
+            {
+                Position = e.GetPosition(anchor),
+            });
+
+        e.Handled = true;
+    }
+
+    private void FileTagChip_DragStarting(UIElement sender, DragStartingEventArgs args)
+    {
+        if (GetFileTagChipFromSender(sender) is not { IsPreview: false } tag ||
+            GetFileFromTagChipSender(sender) is not { } file ||
+            file.IsDirectory ||
+            file.IsRenaming)
+        {
+            args.Cancel = true;
+            return;
+        }
+
+        args.AllowedOperations = DataPackageOperation.Copy;
+        args.Data.RequestedOperation = DataPackageOperation.Copy;
+        args.Data.Properties.Title = tag.Name;
+        TagDragData.SetData(
+            args.Data,
+            new DraggedTag(
+                tag.Name,
+                tag.Name,
+                tag.Color,
+                tag.TextColor));
+    }
+
+    private void FileTagChip_DropCompleted(UIElement sender, DropCompletedEventArgs args)
+    {
+        TagDragData.Clear();
+        ClearTagDropPreview();
+    }
+
+    private async void DeleteFileTagMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuFlyoutItem { Tag: FileTagMenuContext context })
+        {
+            return;
+        }
+
+        await DeleteTagFromFileAsync(context.File, context.TagName);
     }
 
     private void FileCard_DragOver(object sender, DragEventArgs e)
@@ -2097,10 +2177,12 @@ public sealed partial class FileExplorerView : UserControl
         }
 
         e.AcceptedOperation = DataPackageOperation.Copy;
-        e.DragUIOverride.Caption = "Add tag";
+        e.DragUIOverride.Caption = FileContainsTag(file, tag.Name)
+            ? "Move tag"
+            : "Add tag";
         e.DragUIOverride.IsCaptionVisible = true;
 
-        var insertionIndex = CalculateTagInsertionIndex(sender, e, file);
+        var insertionIndex = CalculateTagInsertionIndex(sender, e, file, tag.Name);
         SetTagDropPreview(file, tag, insertionIndex);
 
         return true;
@@ -2117,7 +2199,9 @@ public sealed partial class FileExplorerView : UserControl
             return;
         }
 
-        var insertionIndex = CalculateTagInsertionIndex(sender, e, file);
+        var insertionIndex = TagDragData.TryGetCurrent(out var currentTag)
+            ? CalculateTagInsertionIndex(sender, e, file, currentTag.Name)
+            : (int?)null;
         var deferral = e.GetDeferral();
         DraggedTag? tag;
         try
@@ -2136,16 +2220,42 @@ public sealed partial class FileExplorerView : UserControl
             return;
         }
 
+        if (insertionIndex is null)
+        {
+            insertionIndex = CalculateTagInsertionIndex(sender, e, file, tag.Name);
+        }
+
         await RunFileOperationAsync(
             async () =>
             {
                 var operationResult = await ViewModel.InsertTagIntoFileAsync(
                     file,
                     tag.Name,
-                    insertionIndex);
+                    insertionIndex.Value);
                 RecordFileOperation(operationResult);
             },
             "Add tag failed");
+        FileGridScrollViewer.Focus(FocusState.Programmatic);
+    }
+
+    private async Task DeleteTagFromFileAsync(
+        FileExplorerItemViewModel file,
+        string tagName)
+    {
+        if (file.IsDirectory || file.IsRenaming || string.IsNullOrWhiteSpace(tagName))
+        {
+            return;
+        }
+
+        await RunFileOperationAsync(
+            async () =>
+            {
+                var operationResult = await ViewModel.RemoveTagFromFileAsync(
+                    file,
+                    tagName);
+                RecordFileOperation(operationResult);
+            },
+            "Delete tag failed");
         FileGridScrollViewer.Focus(FocusState.Programmatic);
     }
 
@@ -2265,7 +2375,8 @@ public sealed partial class FileExplorerView : UserControl
     private int CalculateTagInsertionIndex(
         object sender,
         DragEventArgs e,
-        FileExplorerItemViewModel file)
+        FileExplorerItemViewModel file,
+        string? movingTagName = null)
     {
         if (file.Tags.Count == 0 || sender is not DependencyObject source)
         {
@@ -2278,29 +2389,85 @@ public sealed partial class FileExplorerView : UserControl
                 ReferenceEquals(control.DataContext, file));
         if (tagsControl is null)
         {
-            return file.Tags.Count;
+            return NormalizeTagInsertionIndex(
+                file,
+                file.Tags.Count,
+                movingTagName,
+                hasVisibleMovingTag: false);
         }
 
         var pointer = e.GetPosition(tagsControl);
         var insertionIndex = 0;
+        var hasVisibleMovingTag = false;
         foreach (var chip in FindDescendants<FrameworkElement>(
                      tagsControl,
                      element => element.Name == "FileTagChip" &&
                          element.DataContext is FileTagChipViewModel { IsPreview: false }))
         {
+            if (chip.DataContext is FileTagChipViewModel chipTag &&
+                string.Equals(chipTag.Name, movingTagName, StringComparison.OrdinalIgnoreCase))
+            {
+                hasVisibleMovingTag = true;
+            }
+
             var topLeft = chip.TransformToVisual(tagsControl).TransformPoint(new Point(0, 0));
             var centerX = topLeft.X + chip.ActualWidth / 2;
             var centerY = topLeft.Y + chip.ActualHeight / 2;
             if (pointer.Y < centerY ||
                 (pointer.Y <= topLeft.Y + chip.ActualHeight && pointer.X < centerX))
             {
-                return insertionIndex;
+                return NormalizeTagInsertionIndex(
+                    file,
+                    insertionIndex,
+                    movingTagName,
+                    hasVisibleMovingTag);
             }
 
             insertionIndex++;
         }
 
-        return insertionIndex;
+        return NormalizeTagInsertionIndex(
+            file,
+            insertionIndex,
+            movingTagName,
+            hasVisibleMovingTag);
+    }
+
+    private static int NormalizeTagInsertionIndex(
+        FileExplorerItemViewModel file,
+        int insertionIndex,
+        string? movingTagName,
+        bool hasVisibleMovingTag)
+    {
+        var normalizedIndex = Math.Clamp(insertionIndex, 0, file.Tags.Count);
+        if (string.IsNullOrWhiteSpace(movingTagName) || !hasVisibleMovingTag)
+        {
+            return normalizedIndex;
+        }
+
+        for (var i = 0; i < file.Tags.Count; i++)
+        {
+            if (!string.Equals(file.Tags[i], movingTagName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            return i < normalizedIndex
+                ? normalizedIndex - 1
+                : normalizedIndex;
+        }
+
+        return normalizedIndex;
+    }
+
+    private static bool FileContainsTag(
+        FileExplorerItemViewModel file,
+        string tagName)
+    {
+        return file.Tags.Any(tag => string.Equals(
+            tag,
+            tagName,
+            StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task ShowFileOperationErrorDialogAsync(string title, string message)
@@ -3068,6 +3235,37 @@ public sealed partial class FileExplorerView : UserControl
         return sender is FrameworkElement { DataContext: FileExplorerItemViewModel file }
             ? file
             : null;
+    }
+
+    private static FileTagChipViewModel? GetFileTagChipFromSender(object sender)
+    {
+        return sender is FrameworkElement { DataContext: FileTagChipViewModel tag }
+            ? tag
+            : null;
+    }
+
+    private static FileExplorerItemViewModel? GetFileFromTagChipSender(object sender)
+    {
+        if (sender is not DependencyObject dependencyObject)
+        {
+            return null;
+        }
+
+        while (dependencyObject is not null)
+        {
+            if (dependencyObject is FrameworkElement
+                {
+                    Name: "FileTagsItemsControl",
+                    DataContext: FileExplorerItemViewModel file,
+                })
+            {
+                return file;
+            }
+
+            dependencyObject = VisualTreeHelper.GetParent(dependencyObject);
+        }
+
+        return null;
     }
 
     private TextBox? FindInlineRenameTextBox(FileExplorerItemViewModel file)

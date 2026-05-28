@@ -69,4 +69,44 @@ public sealed class TagParserServiceTests
 
         Assert.Equal("[work urgent] example.png", filename);
     }
+
+    [Fact]
+    public void RemoveTagFromFilename_NoExistingTags_ReturnsOriginalFilename()
+    {
+        var filename = _parser.RemoveTagFromFilename("example.png", "work");
+
+        Assert.Equal("example.png", filename);
+    }
+
+    [Fact]
+    public void RemoveTagFromFilename_TagNotPresent_ReturnsOriginalFilename()
+    {
+        var filename = _parser.RemoveTagFromFilename("[work asset] example.png", "urgent");
+
+        Assert.Equal("[work asset] example.png", filename);
+    }
+
+    [Fact]
+    public void RemoveTagFromFilename_RemovesRequestedTag()
+    {
+        var filename = _parser.RemoveTagFromFilename("[work urgent asset] example.png", "urgent");
+
+        Assert.Equal("[work asset] example.png", filename);
+    }
+
+    [Fact]
+    public void RemoveTagFromFilename_SingleTag_RemovesLeadingTagBlock()
+    {
+        var filename = _parser.RemoveTagFromFilename("[work] example.png", "work");
+
+        Assert.Equal("example.png", filename);
+    }
+
+    [Fact]
+    public void RemoveTagFromFilename_MatchesCaseInsensitively()
+    {
+        var filename = _parser.RemoveTagFromFilename("[Work asset] example.png", "work");
+
+        Assert.Equal("[asset] example.png", filename);
+    }
 }

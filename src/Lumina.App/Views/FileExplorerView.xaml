@@ -614,8 +614,13 @@
                                                 <DataTemplate>
                                                     <Border
                                                         x:Name="FileTagChip"
+                                                        CanDrag="True"
+                                                        DragStarting="FileTagChip_DragStarting"
+                                                        DropCompleted="FileTagChip_DropCompleted"
                                                         MaxWidth="116"
-                                                        Margin="0,0,4,4">
+                                                        Margin="0,0,4,4"
+                                                        RightTapped="FileTagChip_RightTapped"
+                                                        ToolTipService.ToolTip="{Binding Name}">
                                                         <Grid>
                                                             <Border
                                                                 Padding="6,2"

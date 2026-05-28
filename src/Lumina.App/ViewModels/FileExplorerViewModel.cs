@@ -599,6 +599,30 @@ public sealed class FileExplorerViewModel : ObservableObject
         return await RenameFileAsync(file, newFileSystemName, cancellationToken);
     }
 
+    public async Task<FileOperationResult?> RemoveTagFromFileAsync(
+        FileExplorerItemViewModel file,
+        string tag,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        ArgumentException.ThrowIfNullOrWhiteSpace(tag);
+
+        if (file.IsDirectory)
+        {
+            return null;
+        }
+
+        var newFileSystemName = _tagParserService.RemoveTagFromFilename(
+            file.FileSystemName,
+            tag);
+        if (string.Equals(file.FileSystemName, newFileSystemName, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        return await RenameFileAsync(file, newFileSystemName, cancellationToken);
+    }
+
     public async Task<FileOperationResult?> CreateFolderAsync(
         CancellationToken cancellationToken = default)
     {

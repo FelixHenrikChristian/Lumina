@@ -54,6 +54,34 @@ public sealed partial class TagParserService : ITagParserService
         return $"[{string.Join(' ', tags)}] {displayName}";
     }
 
+    public string RemoveTagFromFilename(string filename, string tag)
+    {
+        ArgumentNullException.ThrowIfNull(filename);
+        ArgumentException.ThrowIfNullOrWhiteSpace(tag);
+
+        var normalizedTag = tag.Trim();
+        var tags = ParseTagsFromFilename(filename);
+        if (!tags.Any(existingTag => string.Equals(
+                existingTag,
+                normalizedTag,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            return filename;
+        }
+
+        var remainingTags = tags
+            .Where(existingTag => !string.Equals(
+                existingTag,
+                normalizedTag,
+                StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var displayName = GetDisplayName(filename);
+
+        return remainingTags.Count == 0
+            ? displayName
+            : $"[{string.Join(' ', remainingTags)}] {displayName}";
+    }
+
     [GeneratedRegex(@"^\[(?<tags>[^\]]+)\]\s*", RegexOptions.CultureInvariant)]
     private static partial Regex LeadingTagsRegex();
 }
