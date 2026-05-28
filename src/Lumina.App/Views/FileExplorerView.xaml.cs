@@ -249,9 +249,12 @@ public sealed partial class FileExplorerView : UserControl
     {
         LocationSelectionEvents.SelectionChanged -= LocationSelectionEvents_SelectionChanged;
         LocationSelectionEvents.SelectionChanged += LocationSelectionEvents_SelectionChanged;
+        TagLibraryEvents.Changed -= TagLibraryEvents_Changed;
+        TagLibraryEvents.Changed += TagLibraryEvents_Changed;
         Clipboard.ContentChanged -= Clipboard_ContentChanged;
         Clipboard.ContentChanged += Clipboard_ContentChanged;
         AttachSearchTextBoxEvents();
+        await ViewModel.LoadTagLibraryAsync();
         await ViewModel.OpenLocationAsync(LocationSelectionEvents.CurrentLocation);
         await RefreshClipboardVisualStateAsync();
         UpdateHistoryCommandState();
@@ -260,6 +263,7 @@ public sealed partial class FileExplorerView : UserControl
     private void FileExplorerView_Unloaded(object sender, RoutedEventArgs e)
     {
         LocationSelectionEvents.SelectionChanged -= LocationSelectionEvents_SelectionChanged;
+        TagLibraryEvents.Changed -= TagLibraryEvents_Changed;
         Clipboard.ContentChanged -= Clipboard_ContentChanged;
         CancelPendingSearch();
         CancelInlineRename();
@@ -302,6 +306,11 @@ public sealed partial class FileExplorerView : UserControl
         _redoStack.Clear();
         UpdateHistoryCommandState();
         ScrollToTop();
+    }
+
+    private async void TagLibraryEvents_Changed(object? sender, EventArgs e)
+    {
+        await ViewModel.LoadTagLibraryAsync();
     }
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)

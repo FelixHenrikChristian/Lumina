@@ -618,19 +618,19 @@
                                                         Margin="0,0,4,4">
                                                         <Grid>
                                                             <Border
-                                                                Padding="7,3"
-                                                                Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                                                Padding="6,2"
+                                                                Background="{Binding Color, Converter={StaticResource HexColorToBrushConverter}, ConverterParameter=#0078d4}"
                                                                 CornerRadius="4"
                                                                 Visibility="{Binding NormalVisibility}">
                                                                 <TextBlock
-                                                                    FontSize="11"
-                                                                    Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                                                    FontSize="10"
+                                                                    Foreground="{Binding TextColor, Converter={StaticResource HexColorToBrushConverter}, ConverterParameter=#ffffff}"
                                                                     Text="{Binding Name}"
                                                                     TextTrimming="CharacterEllipsis" />
                                                             </Border>
 
                                                             <Border
-                                                                Padding="7,3"
+                                                                Padding="6,2"
                                                                 Background="{Binding Color, Converter={StaticResource HexColorToBrushConverter}, ConverterParameter=#0078d4}"
                                                                 BorderBrush="{Binding Color, Converter={StaticResource HexColorToBrushConverter}, ConverterParameter=#0078d4}"
                                                                 BorderThickness="1"
@@ -638,7 +638,7 @@
                                                                 Opacity="0.66"
                                                                 Visibility="{Binding PreviewVisibility}">
                                                                 <TextBlock
-                                                                    FontSize="11"
+                                                                    FontSize="10"
                                                                     FontWeight="SemiBold"
                                                                     Foreground="{Binding TextColor, Converter={StaticResource HexColorToBrushConverter}, ConverterParameter=#ffffff}"
                                                                     Text="{Binding Name}"

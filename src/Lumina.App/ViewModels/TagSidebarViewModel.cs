@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 
 using Microsoft.UI.Xaml;
 
+using Lumina.App.Services;
 using Lumina.Core.Models;
 using Lumina.Core.Services;
 
@@ -360,6 +361,7 @@ public sealed class TagSidebarViewModel : ObservableObject
         try
         {
             await SaveGroupsAsync(cancellationToken);
+            TagLibraryEvents.RaiseChanged();
         }
         catch (Exception ex)
         {

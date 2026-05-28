@@ -19,6 +19,7 @@ public sealed class FileExplorerViewModel : ObservableObject
 
     private readonly IFileBrowserService _fileBrowserService;
     private readonly IFileThumbnailService _fileThumbnailService;
+    private readonly ITagGroupStore _tagGroupStore;
     private readonly ITagParserService _tagParserService;
     private readonly List<string> _backStack = [];
     private readonly List<string> _forwardStack = [];
@@ -39,31 +40,47 @@ public sealed class FileExplorerViewModel : ObservableObject
     private FileSortOptions _sortOptions = FileSortOptions.Default;
     private int _zoomLevelIndex = DefaultZoomLevelIndex;
     private LocationPathScope? _currentLocationScope;
+    private IReadOnlyDictionary<string, FileTagStyle> _tagStyles =
+        new Dictionary<string, FileTagStyle>(StringComparer.OrdinalIgnoreCase);
 
     public FileExplorerViewModel()
-        : this(new FileSystemBrowserService(), new ShellFileThumbnailService(), new TagParserService())
+        : this(
+            new FileSystemBrowserService(),
+            new ShellFileThumbnailService(),
+            new JsonTagGroupStore(),
+            new TagParserService())
     {
     }
 
     public FileExplorerViewModel(IFileBrowserService fileBrowserService)
-        : this(fileBrowserService, new ShellFileThumbnailService(), new TagParserService())
+        : this(
+            fileBrowserService,
+            new ShellFileThumbnailService(),
+            new JsonTagGroupStore(),
+            new TagParserService())
     {
     }
 
     public FileExplorerViewModel(
         IFileBrowserService fileBrowserService,
         IFileThumbnailService fileThumbnailService)
-        : this(fileBrowserService, fileThumbnailService, new TagParserService())
+        : this(
+            fileBrowserService,
+            fileThumbnailService,
+            new JsonTagGroupStore(),
+            new TagParserService())
     {
     }
 
     public FileExplorerViewModel(
         IFileBrowserService fileBrowserService,
         IFileThumbnailService fileThumbnailService,
+        ITagGroupStore tagGroupStore,
         ITagParserService tagParserService)
     {
         _fileBrowserService = fileBrowserService;
         _fileThumbnailService = fileThumbnailService;
+        _tagGroupStore = tagGroupStore;
         _tagParserService = tagParserService;
     }
 
@@ -407,6 +424,24 @@ public sealed class FileExplorerViewModel : ObservableObject
         ClearSearchQuery();
         ClearSelection();
         await LoadCurrentDirectoryAsync(cancellationToken);
+    }
+
+    public async Task LoadTagLibraryAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var tagGroups = await _tagGroupStore.LoadAsync(cancellationToken);
+            _tagStyles = CreateTagStyles(tagGroups);
+        }
+        catch (Exception)
+        {
+            _tagStyles = new Dictionary<string, FileTagStyle>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        foreach (var file in Files)
+        {
+            file.ApplyTagStyles(_tagStyles);
+        }
     }
 
     public async Task OpenContainingDirectoryAsync(
@@ -842,7 +877,8 @@ public sealed class FileExplorerViewModel : ObservableObject
                     file,
                     CardWidth,
                     CardHeight,
-                    ThumbnailIconFontSize);
+                    ThumbnailIconFontSize,
+                    _tagStyles);
                 Files.Add(item);
 
                 if (item.CanLoadThumbnail)
@@ -1160,6 +1196,26 @@ public sealed class FileExplorerViewModel : ObservableObject
             StringComparison.OrdinalIgnoreCase);
     }
 
+    private static IReadOnlyDictionary<string, FileTagStyle> CreateTagStyles(
+        IReadOnlyList<TagGroup> tagGroups)
+    {
+        var styles = new Dictionary<string, FileTagStyle>(StringComparer.OrdinalIgnoreCase);
+        foreach (var tag in tagGroups.SelectMany(group => group.Tags))
+        {
+            var name = tag.Name.Trim();
+            if (name.Length == 0 || styles.ContainsKey(name))
+            {
+                continue;
+            }
+
+            styles[name] = new FileTagStyle(
+                tag.Color,
+                tag.TextColor ?? "#ffffff");
+        }
+
+        return styles;
+    }
+
     private static string PopLast(List<string> paths)
     {
         var lastIndex = paths.Count - 1;
@@ -1190,6 +1246,7 @@ public sealed class FileExplorerItemViewModel : ObservableObject
     private string? _previewTagName;
     private string? _previewTagTextColor;
     private string _renameText = string.Empty;
+    private IReadOnlyDictionary<string, FileTagStyle> _tagStyles;
     private ImageSource? _thumbnailSource;
     private double _thumbnailIconFontSize;
 
@@ -1197,12 +1254,14 @@ public sealed class FileExplorerItemViewModel : ObservableObject
         FileItem file,
         double cardWidth,
         double cardHeight,
-        double thumbnailIconFontSize)
+        double thumbnailIconFontSize,
+        IReadOnlyDictionary<string, FileTagStyle>? tagStyles = null)
     {
         File = file;
         _cardWidth = cardWidth;
         _cardHeight = cardHeight;
         _renameText = Name;
+        _tagStyles = tagStyles ?? new Dictionary<string, FileTagStyle>(StringComparer.OrdinalIgnoreCase);
         _thumbnailIconFontSize = thumbnailIconFontSize;
     }
 
@@ -1391,6 +1450,7 @@ public sealed class FileExplorerItemViewModel : ObservableObject
 
     public IReadOnlyList<FileTagChipViewModel> TagChips => CreateTagChips(
         Tags,
+        _tagStyles,
         _previewTagName,
         _previewTagColor,
         _previewTagTextColor,
@@ -1454,6 +1514,13 @@ public sealed class FileExplorerItemViewModel : ObservableObject
         _previewTagTextColor = string.IsNullOrWhiteSpace(textColor) ? "#ffffff" : textColor.Trim();
         _previewTagInsertionIndex = normalizedIndex;
         IsTagDropTarget = true;
+        OnPropertyChanged(nameof(TagChips));
+        OnPropertyChanged(nameof(TagVisibility));
+    }
+
+    public void ApplyTagStyles(IReadOnlyDictionary<string, FileTagStyle> tagStyles)
+    {
+        _tagStyles = tagStyles;
         OnPropertyChanged(nameof(TagChips));
         OnPropertyChanged(nameof(TagVisibility));
     }
@@ -1552,6 +1619,7 @@ public sealed class FileExplorerItemViewModel : ObservableObject
 
     private static IReadOnlyList<FileTagChipViewModel> CreateTagChips(
         IReadOnlyList<string> tags,
+        IReadOnlyDictionary<string, FileTagStyle> tagStyles,
         string? previewTagName,
         string? previewTagColor,
         string? previewTagTextColor,
@@ -1559,13 +1627,19 @@ public sealed class FileExplorerItemViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(previewTagName) || previewInsertionIndex is null)
         {
-            return tags.Select(FileTagChipViewModel.CreateExisting).ToList();
+            return tags
+                .Select(tag => FileTagChipViewModel.CreateExisting(
+                    tag,
+                    ResolveTagStyle(tag, tagStyles)))
+                .ToList();
         }
 
         var previewName = previewTagName.Trim();
         var chips = tags
             .Where(tag => !string.Equals(tag, previewName, StringComparison.OrdinalIgnoreCase))
-            .Select(FileTagChipViewModel.CreateExisting)
+            .Select(tag => FileTagChipViewModel.CreateExisting(
+                tag,
+                ResolveTagStyle(tag, tagStyles)))
             .ToList();
         var insertionIndex = Math.Clamp(previewInsertionIndex.Value, 0, chips.Count);
         chips.Insert(
@@ -1577,6 +1651,22 @@ public sealed class FileExplorerItemViewModel : ObservableObject
 
         return chips;
     }
+
+    private static FileTagStyle ResolveTagStyle(
+        string tag,
+        IReadOnlyDictionary<string, FileTagStyle> tagStyles)
+    {
+        return tagStyles.TryGetValue(tag, out var style)
+            ? style
+            : FileTagStyle.Fallback;
+    }
+}
+
+public sealed record FileTagStyle(
+    string Color,
+    string TextColor)
+{
+    public static FileTagStyle Fallback { get; } = new("#0078d4", "#ffffff");
 }
 
 public sealed class FileTagChipViewModel
@@ -1609,9 +1699,15 @@ public sealed class FileTagChipViewModel
         ? Visibility.Visible
         : Visibility.Collapsed;
 
-    public static FileTagChipViewModel CreateExisting(string name)
+    public static FileTagChipViewModel CreateExisting(
+        string name,
+        FileTagStyle style)
     {
-        return new FileTagChipViewModel(name, isPreview: false, "#0078d4", "#ffffff");
+        return new FileTagChipViewModel(
+            name,
+            isPreview: false,
+            style.Color,
+            style.TextColor);
     }
 
     public static FileTagChipViewModel CreatePreview(
