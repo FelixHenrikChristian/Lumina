@@ -220,6 +220,7 @@ public sealed partial class FileExplorerView : UserControl
 
     private FileClipboardState? _fileClipboard;
     private FileExplorerItemViewModel? _dropTargetFile;
+    private FileExplorerItemViewModel? _tagDropPreviewFile;
     private FileExplorerItemViewModel? _pendingSingleSelectionFile;
     private FileExplorerItemViewModel? _pendingToggleSelectionFile;
     private IReadOnlyList<string>? _draggedPaths;
@@ -262,6 +263,7 @@ public sealed partial class FileExplorerView : UserControl
         Clipboard.ContentChanged -= Clipboard_ContentChanged;
         CancelPendingSearch();
         CancelInlineRename();
+        ClearTagDropPreview();
         DetachSearchTextBoxEvents();
     }
 
@@ -293,6 +295,7 @@ public sealed partial class FileExplorerView : UserControl
     {
         CancelPendingSearch();
         CancelInlineRename();
+        ClearTagDropPreview();
         _isSearchTextComposing = false;
         await ViewModel.OpenLocationAsync(e.Location);
         _undoStack.Clear();
@@ -634,11 +637,24 @@ public sealed partial class FileExplorerView : UserControl
     {
         _draggedPaths = null;
         ClearDropTarget();
+        ClearTagDropPreview();
     }
 
     private void FileCard_DragOver(object sender, DragEventArgs e)
     {
-        if (GetFileFromSender(sender) is not { IsDirectory: true } file)
+        if (GetFileFromSender(sender) is not { } file)
+        {
+            return;
+        }
+
+        if (TrySetAcceptedTagDropOperation(sender, e, file))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        ClearTagDropPreview();
+        if (!file.IsDirectory)
         {
             return;
         }
@@ -662,22 +678,53 @@ public sealed partial class FileExplorerView : UserControl
         {
             ClearDropTarget();
         }
+
+        if (GetFileFromSender(sender) is { } tagFile && ReferenceEquals(_tagDropPreviewFile, tagFile))
+        {
+            ClearTagDropPreview();
+        }
     }
 
     private async void FileCard_Drop(object sender, DragEventArgs e)
     {
-        if (GetFileFromSender(sender) is not { IsDirectory: true } file)
+        if (GetFileFromSender(sender) is not { } file)
         {
             return;
         }
 
-        e.Handled = true;
-        await DropFilesIntoDirectoryAsync(e, file.Path);
+        if (TagDragData.Contains(e.DataView))
+        {
+            e.Handled = true;
+            if (!file.IsDirectory)
+            {
+                await DropTagIntoFileAsync(sender, e, file);
+            }
+            else
+            {
+                ClearTagDropPreview();
+            }
+
+            return;
+        }
+
+        if (file.IsDirectory)
+        {
+            e.Handled = true;
+            await DropFilesIntoDirectoryAsync(e, file.Path);
+        }
     }
 
     private void FileDropSurface_DragOver(object sender, DragEventArgs e)
     {
         ClearDropTarget();
+        ClearTagDropPreview();
+        if (TagDragData.Contains(e.DataView))
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            e.Handled = true;
+            return;
+        }
+
         if (TrySetAcceptedFileDropOperation(
                 e,
                 ViewModel.CurrentPath,
@@ -690,11 +737,19 @@ public sealed partial class FileExplorerView : UserControl
     private void FileDropSurface_DragLeave(object sender, DragEventArgs e)
     {
         ClearDropTarget();
+        ClearTagDropPreview();
     }
 
     private async void FileDropSurface_Drop(object sender, DragEventArgs e)
     {
         e.Handled = true;
+        ClearTagDropPreview();
+        if (TagDragData.Contains(e.DataView))
+        {
+            TagDragData.Clear();
+            return;
+        }
+
         await DropFilesIntoDirectoryAsync(e, ViewModel.CurrentPath);
     }
 
@@ -2013,6 +2068,78 @@ public sealed partial class FileExplorerView : UserControl
         }
     }
 
+    private bool TrySetAcceptedTagDropOperation(
+        object sender,
+        DragEventArgs e,
+        FileExplorerItemViewModel file)
+    {
+        if (!TagDragData.Contains(e.DataView))
+        {
+            return false;
+        }
+
+        ClearDropTarget();
+        e.AcceptedOperation = DataPackageOperation.None;
+
+        if (file.IsDirectory || file.IsRenaming || !TagDragData.TryGetCurrent(out var tag))
+        {
+            ClearTagDropPreview();
+            return true;
+        }
+
+        e.AcceptedOperation = DataPackageOperation.Copy;
+        e.DragUIOverride.Caption = "Add tag";
+        e.DragUIOverride.IsCaptionVisible = true;
+
+        var insertionIndex = CalculateTagInsertionIndex(sender, e, file);
+        SetTagDropPreview(file, tag, insertionIndex);
+
+        return true;
+    }
+
+    private async Task DropTagIntoFileAsync(
+        object sender,
+        DragEventArgs e,
+        FileExplorerItemViewModel file)
+    {
+        if (file.IsDirectory || file.IsRenaming)
+        {
+            ClearTagDropPreview();
+            return;
+        }
+
+        var insertionIndex = CalculateTagInsertionIndex(sender, e, file);
+        var deferral = e.GetDeferral();
+        DraggedTag? tag;
+        try
+        {
+            tag = await TagDragData.GetDroppedTagAsync(e.DataView);
+        }
+        finally
+        {
+            ClearTagDropPreview();
+            TagDragData.Clear();
+            deferral.Complete();
+        }
+
+        if (tag is null || string.IsNullOrWhiteSpace(tag.Name))
+        {
+            return;
+        }
+
+        await RunFileOperationAsync(
+            async () =>
+            {
+                var operationResult = await ViewModel.InsertTagIntoFileAsync(
+                    file,
+                    tag.Name,
+                    insertionIndex);
+                RecordFileOperation(operationResult);
+            },
+            "Add tag failed");
+        FileGridScrollViewer.Focus(FocusState.Programmatic);
+    }
+
     private bool TrySetAcceptedFileDropOperation(
         DragEventArgs e,
         string destinationDirectoryPath,
@@ -2095,6 +2222,76 @@ public sealed partial class FileExplorerView : UserControl
     private void ClearDropTarget()
     {
         SetDropTarget(null);
+    }
+
+    private void SetTagDropPreview(
+        FileExplorerItemViewModel file,
+        DraggedTag tag,
+        int insertionIndex)
+    {
+        if (!ReferenceEquals(_tagDropPreviewFile, file))
+        {
+            ClearTagDropPreview();
+            _tagDropPreviewFile = file;
+        }
+
+        file.ShowTagInsertionPreview(
+            tag.Name,
+            tag.Color,
+            tag.TextColor,
+            insertionIndex);
+    }
+
+    private void ClearTagDropPreview()
+    {
+        if (_tagDropPreviewFile is null)
+        {
+            return;
+        }
+
+        _tagDropPreviewFile.ClearTagInsertionPreview();
+        _tagDropPreviewFile = null;
+    }
+
+    private int CalculateTagInsertionIndex(
+        object sender,
+        DragEventArgs e,
+        FileExplorerItemViewModel file)
+    {
+        if (file.Tags.Count == 0 || sender is not DependencyObject source)
+        {
+            return 0;
+        }
+
+        var tagsControl = FindDescendant<ItemsControl>(
+            source,
+            control => control.Name == "FileTagsItemsControl" &&
+                ReferenceEquals(control.DataContext, file));
+        if (tagsControl is null)
+        {
+            return file.Tags.Count;
+        }
+
+        var pointer = e.GetPosition(tagsControl);
+        var insertionIndex = 0;
+        foreach (var chip in FindDescendants<FrameworkElement>(
+                     tagsControl,
+                     element => element.Name == "FileTagChip" &&
+                         element.DataContext is FileTagChipViewModel { IsPreview: false }))
+        {
+            var topLeft = chip.TransformToVisual(tagsControl).TransformPoint(new Point(0, 0));
+            var centerX = topLeft.X + chip.ActualWidth / 2;
+            var centerY = topLeft.Y + chip.ActualHeight / 2;
+            if (pointer.Y < centerY ||
+                (pointer.Y <= topLeft.Y + chip.ActualHeight && pointer.X < centerX))
+            {
+                return insertionIndex;
+            }
+
+            insertionIndex++;
+        }
+
+        return insertionIndex;
     }
 
     private async Task ShowFileOperationErrorDialogAsync(string title, string message)
@@ -3038,6 +3235,27 @@ public sealed partial class FileExplorerView : UserControl
         }
 
         return null;
+    }
+
+    private static IEnumerable<T> FindDescendants<T>(
+        DependencyObject parent,
+        Func<T, bool> predicate)
+        where T : DependencyObject
+    {
+        var childCount = VisualTreeHelper.GetChildrenCount(parent);
+        for (var i = 0; i < childCount; i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T match && predicate(match))
+            {
+                yield return match;
+            }
+
+            foreach (var descendant in FindDescendants(child, predicate))
+            {
+                yield return descendant;
+            }
+        }
     }
 
     [DllImport("user32.dll")]

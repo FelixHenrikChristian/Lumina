@@ -37,4 +37,36 @@ public sealed class TagParserServiceTests
 
         Assert.Equal("example", displayName);
     }
+
+    [Fact]
+    public void InsertTagIntoFilename_NoExistingTags_AddsLeadingTagBlock()
+    {
+        var filename = _parser.InsertTagIntoFilename("example.png", "work", 0);
+
+        Assert.Equal("[work] example.png", filename);
+    }
+
+    [Fact]
+    public void InsertTagIntoFilename_ExistingTags_InsertsAtRequestedIndex()
+    {
+        var filename = _parser.InsertTagIntoFilename("[work asset] example.png", "urgent", 1);
+
+        Assert.Equal("[work urgent asset] example.png", filename);
+    }
+
+    [Fact]
+    public void InsertTagIntoFilename_ExistingTag_MovesTagInsteadOfDuplicating()
+    {
+        var filename = _parser.InsertTagIntoFilename("[work asset urgent] example.png", "asset", 2);
+
+        Assert.Equal("[work urgent asset] example.png", filename);
+    }
+
+    [Fact]
+    public void InsertTagIntoFilename_OutOfRangeIndex_ClampsToEnd()
+    {
+        var filename = _parser.InsertTagIntoFilename("[work] example.png", "urgent", 99);
+
+        Assert.Equal("[work urgent] example.png", filename);
+    }
 }

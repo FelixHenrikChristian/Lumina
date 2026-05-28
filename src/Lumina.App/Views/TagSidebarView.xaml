@@ -201,11 +201,15 @@
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
                                                 <Border
+                                                    CanDrag="True"
+                                                    DragStarting="TagChip_DragStarting"
+                                                    DropCompleted="TagChip_DropCompleted"
                                                     Margin="0,0,6,6"
                                                     Padding="10,5"
                                                     Background="{Binding Color, Converter={StaticResource HexColorToBrushConverter}}"
                                                     CornerRadius="4"
-                                                    RightTapped="TagChip_RightTapped">
+                                                    RightTapped="TagChip_RightTapped"
+                                                    ToolTipService.ToolTip="{Binding Name}">
                                                     <TextBlock
                                                         Foreground="{Binding TextColor, Converter={StaticResource HexColorToBrushConverter}, ConverterParameter=#ffffff}"
                                                         Text="{Binding Name}"

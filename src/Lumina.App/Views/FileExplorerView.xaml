@@ -4,12 +4,15 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:Lumina.App.Controls"
+    xmlns:converters="using:Lumina.App.Converters"
     xmlns:viewModels="using:Lumina.App.ViewModels"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
     <UserControl.Resources>
+        <converters:HexColorToBrushConverter x:Key="HexColorToBrushConverter" />
+
         <Style x:Key="ExplorerNavigationButtonStyle" TargetType="Button">
             <Setter Property="Width" Value="28" />
             <Setter Property="Height" Value="28" />
@@ -550,7 +553,7 @@
                                 x:Name="FileCard"
                                 Width="{Binding CardWidth}"
                                 Height="{Binding CardHeight}"
-                                AllowDrop="{Binding IsDirectory}"
+                                AllowDrop="True"
                                 AutomationProperties.Name="{Binding Name}"
                                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -596,10 +599,11 @@
                                             Visibility="{Binding IconVisibility}" />
 
                                         <ItemsControl
+                                            x:Name="FileTagsItemsControl"
                                             Margin="8"
                                             HorizontalAlignment="Left"
                                             VerticalAlignment="Top"
-                                            ItemsSource="{Binding Tags}"
+                                            ItemsSource="{Binding TagChips}"
                                             Visibility="{Binding TagVisibility}">
                                             <ItemsControl.ItemsPanel>
                                                 <ItemsPanelTemplate>
@@ -609,16 +613,38 @@
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
                                                     <Border
+                                                        x:Name="FileTagChip"
                                                         MaxWidth="116"
-                                                        Margin="0,0,4,4"
-                                                        Padding="7,3"
-                                                        Background="{ThemeResource AccentFillColorDefaultBrush}"
-                                                        CornerRadius="4">
-                                                        <TextBlock
-                                                            FontSize="11"
-                                                            Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
-                                                            Text="{Binding}"
-                                                            TextTrimming="CharacterEllipsis" />
+                                                        Margin="0,0,4,4">
+                                                        <Grid>
+                                                            <Border
+                                                                Padding="7,3"
+                                                                Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                                                CornerRadius="4"
+                                                                Visibility="{Binding NormalVisibility}">
+                                                                <TextBlock
+                                                                    FontSize="11"
+                                                                    Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                                                    Text="{Binding Name}"
+                                                                    TextTrimming="CharacterEllipsis" />
+                                                            </Border>
+
+                                                            <Border
+                                                                Padding="7,3"
+                                                                Background="{Binding Color, Converter={StaticResource HexColorToBrushConverter}, ConverterParameter=#0078d4}"
+                                                                BorderBrush="{Binding Color, Converter={StaticResource HexColorToBrushConverter}, ConverterParameter=#0078d4}"
+                                                                BorderThickness="1"
+                                                                CornerRadius="4"
+                                                                Opacity="0.66"
+                                                                Visibility="{Binding PreviewVisibility}">
+                                                                <TextBlock
+                                                                    FontSize="11"
+                                                                    FontWeight="SemiBold"
+                                                                    Foreground="{Binding TextColor, Converter={StaticResource HexColorToBrushConverter}, ConverterParameter=#ffffff}"
+                                                                    Text="{Binding Name}"
+                                                                    TextTrimming="CharacterEllipsis" />
+                                                            </Border>
+                                                        </Grid>
                                                     </Border>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
@@ -722,6 +748,16 @@
                                         IsHitTestVisible="False"
                                         Opacity="0.28"
                                         Visibility="{Binding DropTargetVisibility}" />
+
+                                    <Border
+                                        Grid.RowSpan="2"
+                                        Background="Transparent"
+                                        BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                                        BorderThickness="2"
+                                        CornerRadius="6"
+                                        IsHitTestVisible="False"
+                                        Opacity="0.72"
+                                        Visibility="{Binding TagDropTargetVisibility}" />
 
                                     <Border
                                         Grid.RowSpan="2"

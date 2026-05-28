@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage.Pickers;
 using Windows.UI;
 using WinRT.Interop;
@@ -414,6 +415,30 @@ public sealed partial class TagSidebarView : Page
             });
 
         e.Handled = true;
+    }
+
+    private void TagChip_DragStarting(UIElement sender, DragStartingEventArgs args)
+    {
+        if (sender is not FrameworkElement { DataContext: TagItemViewModel tag })
+        {
+            args.Cancel = true;
+            return;
+        }
+
+        var draggedTag = new DraggedTag(
+            tag.Id,
+            tag.Name,
+            tag.Color,
+            tag.TextColor);
+        args.AllowedOperations = DataPackageOperation.Copy;
+        args.Data.RequestedOperation = DataPackageOperation.Copy;
+        args.Data.Properties.Title = tag.Name;
+        TagDragData.SetData(args.Data, draggedTag);
+    }
+
+    private void TagChip_DropCompleted(UIElement sender, DropCompletedEventArgs args)
+    {
+        TagDragData.Clear();
     }
 
     private async Task EditTagAsync(TagItemViewModel tag)

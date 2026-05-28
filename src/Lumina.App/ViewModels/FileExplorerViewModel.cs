@@ -19,6 +19,7 @@ public sealed class FileExplorerViewModel : ObservableObject
 
     private readonly IFileBrowserService _fileBrowserService;
     private readonly IFileThumbnailService _fileThumbnailService;
+    private readonly ITagParserService _tagParserService;
     private readonly List<string> _backStack = [];
     private readonly List<string> _forwardStack = [];
 
@@ -40,21 +41,30 @@ public sealed class FileExplorerViewModel : ObservableObject
     private LocationPathScope? _currentLocationScope;
 
     public FileExplorerViewModel()
-        : this(new FileSystemBrowserService(), new ShellFileThumbnailService())
+        : this(new FileSystemBrowserService(), new ShellFileThumbnailService(), new TagParserService())
     {
     }
 
     public FileExplorerViewModel(IFileBrowserService fileBrowserService)
-        : this(fileBrowserService, new ShellFileThumbnailService())
+        : this(fileBrowserService, new ShellFileThumbnailService(), new TagParserService())
     {
     }
 
     public FileExplorerViewModel(
         IFileBrowserService fileBrowserService,
         IFileThumbnailService fileThumbnailService)
+        : this(fileBrowserService, fileThumbnailService, new TagParserService())
+    {
+    }
+
+    public FileExplorerViewModel(
+        IFileBrowserService fileBrowserService,
+        IFileThumbnailService fileThumbnailService,
+        ITagParserService tagParserService)
     {
         _fileBrowserService = fileBrowserService;
         _fileThumbnailService = fileThumbnailService;
+        _tagParserService = tagParserService;
     }
 
     public ObservableCollection<FileExplorerItemViewModel> Files { get; } = [];
@@ -526,6 +536,32 @@ public sealed class FileExplorerViewModel : ObservableObject
         await RefreshAndSelectAsync(result.Paths, cancellationToken);
 
         return result;
+    }
+
+    public async Task<FileOperationResult?> InsertTagIntoFileAsync(
+        FileExplorerItemViewModel file,
+        string tag,
+        int insertionIndex,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        ArgumentException.ThrowIfNullOrWhiteSpace(tag);
+
+        if (file.IsDirectory)
+        {
+            return null;
+        }
+
+        var newFileSystemName = _tagParserService.InsertTagIntoFilename(
+            file.FileSystemName,
+            tag,
+            insertionIndex);
+        if (string.Equals(file.FileSystemName, newFileSystemName, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        return await RenameFileAsync(file, newFileSystemName, cancellationToken);
     }
 
     public async Task<FileOperationResult?> CreateFolderAsync(
@@ -1148,6 +1184,11 @@ public sealed class FileExplorerItemViewModel : ObservableObject
     private bool _isDropTarget;
     private bool _isRenaming;
     private bool _isSelected;
+    private bool _isTagDropTarget;
+    private int? _previewTagInsertionIndex;
+    private string? _previewTagColor;
+    private string? _previewTagName;
+    private string? _previewTagTextColor;
     private string _renameText = string.Empty;
     private ImageSource? _thumbnailSource;
     private double _thumbnailIconFontSize;
@@ -1240,6 +1281,18 @@ public sealed class FileExplorerItemViewModel : ObservableObject
         }
     }
 
+    public bool IsTagDropTarget
+    {
+        get => _isTagDropTarget;
+        private set
+        {
+            if (SetProperty(ref _isTagDropTarget, value))
+            {
+                OnPropertyChanged(nameof(TagDropTargetVisibility));
+            }
+        }
+    }
+
     public bool IsRenaming
     {
         get => _isRenaming;
@@ -1281,6 +1334,10 @@ public sealed class FileExplorerItemViewModel : ObservableObject
         : Visibility.Collapsed;
 
     public Visibility DropTargetVisibility => IsDropTarget
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public Visibility TagDropTargetVisibility => IsTagDropTarget
         ? Visibility.Visible
         : Visibility.Collapsed;
 
@@ -1332,7 +1389,14 @@ public sealed class FileExplorerItemViewModel : ObservableObject
 
     public IReadOnlyList<string> Tags => File.Tags;
 
-    public Visibility TagVisibility => Tags.Count > 0
+    public IReadOnlyList<FileTagChipViewModel> TagChips => CreateTagChips(
+        Tags,
+        _previewTagName,
+        _previewTagColor,
+        _previewTagTextColor,
+        _previewTagInsertionIndex);
+
+    public Visibility TagVisibility => TagChips.Count > 0
         ? Visibility.Visible
         : Visibility.Collapsed;
 
@@ -1360,6 +1424,56 @@ public sealed class FileExplorerItemViewModel : ObservableObject
         CardWidth = cardWidth;
         CardHeight = cardHeight;
         ThumbnailIconFontSize = thumbnailIconFontSize;
+    }
+
+    public void ShowTagInsertionPreview(
+        string tagName,
+        string color,
+        string textColor,
+        int insertionIndex)
+    {
+        var normalizedName = tagName.Trim();
+        if (normalizedName.Length == 0)
+        {
+            ClearTagInsertionPreview();
+            return;
+        }
+
+        var normalizedIndex = Math.Clamp(insertionIndex, 0, Tags.Count);
+        if (IsTagDropTarget &&
+            string.Equals(_previewTagName, normalizedName, StringComparison.Ordinal) &&
+            string.Equals(_previewTagColor, color, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(_previewTagTextColor, textColor, StringComparison.OrdinalIgnoreCase) &&
+            _previewTagInsertionIndex == normalizedIndex)
+        {
+            return;
+        }
+
+        _previewTagName = normalizedName;
+        _previewTagColor = string.IsNullOrWhiteSpace(color) ? "#0078d4" : color.Trim();
+        _previewTagTextColor = string.IsNullOrWhiteSpace(textColor) ? "#ffffff" : textColor.Trim();
+        _previewTagInsertionIndex = normalizedIndex;
+        IsTagDropTarget = true;
+        OnPropertyChanged(nameof(TagChips));
+        OnPropertyChanged(nameof(TagVisibility));
+    }
+
+    public void ClearTagInsertionPreview()
+    {
+        if (!IsTagDropTarget &&
+            _previewTagName is null &&
+            _previewTagInsertionIndex is null)
+        {
+            return;
+        }
+
+        _previewTagName = null;
+        _previewTagColor = null;
+        _previewTagTextColor = null;
+        _previewTagInsertionIndex = null;
+        IsTagDropTarget = false;
+        OnPropertyChanged(nameof(TagChips));
+        OnPropertyChanged(nameof(TagVisibility));
     }
 
     public void BeginRename()
@@ -1434,5 +1548,81 @@ public sealed class FileExplorerItemViewModel : ObservableObject
         return unitIndex == 0
             ? $"{size:0} {units[unitIndex]}"
             : $"{size:0.#} {units[unitIndex]}";
+    }
+
+    private static IReadOnlyList<FileTagChipViewModel> CreateTagChips(
+        IReadOnlyList<string> tags,
+        string? previewTagName,
+        string? previewTagColor,
+        string? previewTagTextColor,
+        int? previewInsertionIndex)
+    {
+        if (string.IsNullOrWhiteSpace(previewTagName) || previewInsertionIndex is null)
+        {
+            return tags.Select(FileTagChipViewModel.CreateExisting).ToList();
+        }
+
+        var previewName = previewTagName.Trim();
+        var chips = tags
+            .Where(tag => !string.Equals(tag, previewName, StringComparison.OrdinalIgnoreCase))
+            .Select(FileTagChipViewModel.CreateExisting)
+            .ToList();
+        var insertionIndex = Math.Clamp(previewInsertionIndex.Value, 0, chips.Count);
+        chips.Insert(
+            insertionIndex,
+            FileTagChipViewModel.CreatePreview(
+                previewName,
+                previewTagColor,
+                previewTagTextColor));
+
+        return chips;
+    }
+}
+
+public sealed class FileTagChipViewModel
+{
+    private FileTagChipViewModel(
+        string name,
+        bool isPreview,
+        string color,
+        string textColor)
+    {
+        Name = name;
+        IsPreview = isPreview;
+        Color = color;
+        TextColor = textColor;
+    }
+
+    public string Name { get; }
+
+    public bool IsPreview { get; }
+
+    public string Color { get; }
+
+    public string TextColor { get; }
+
+    public Visibility NormalVisibility => IsPreview
+        ? Visibility.Collapsed
+        : Visibility.Visible;
+
+    public Visibility PreviewVisibility => IsPreview
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+
+    public static FileTagChipViewModel CreateExisting(string name)
+    {
+        return new FileTagChipViewModel(name, isPreview: false, "#0078d4", "#ffffff");
+    }
+
+    public static FileTagChipViewModel CreatePreview(
+        string name,
+        string? color,
+        string? textColor)
+    {
+        return new FileTagChipViewModel(
+            name,
+            isPreview: true,
+            string.IsNullOrWhiteSpace(color) ? "#0078d4" : color.Trim(),
+            string.IsNullOrWhiteSpace(textColor) ? "#ffffff" : textColor.Trim());
     }
 }

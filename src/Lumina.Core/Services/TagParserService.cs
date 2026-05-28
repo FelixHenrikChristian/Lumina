@@ -35,6 +35,25 @@ public sealed partial class TagParserService : ITagParserService
             : displayName[..^extension.Length];
     }
 
+    public string InsertTagIntoFilename(string filename, string tag, int insertionIndex)
+    {
+        ArgumentNullException.ThrowIfNull(filename);
+        ArgumentException.ThrowIfNullOrWhiteSpace(tag);
+
+        var normalizedTag = tag.Trim();
+        var tags = ParseTagsFromFilename(filename)
+            .Where(existingTag => !string.Equals(
+                existingTag,
+                normalizedTag,
+                StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var targetIndex = Math.Clamp(insertionIndex, 0, tags.Count);
+        tags.Insert(targetIndex, normalizedTag);
+
+        var displayName = GetDisplayName(filename);
+        return $"[{string.Join(' ', tags)}] {displayName}";
+    }
+
     [GeneratedRegex(@"^\[(?<tags>[^\]]+)\]\s*", RegexOptions.CultureInvariant)]
     private static partial Regex LeadingTagsRegex();
 }
