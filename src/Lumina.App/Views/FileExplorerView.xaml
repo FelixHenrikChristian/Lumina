@@ -620,6 +620,8 @@
                                                             <Border
                                                                 Padding="6,2"
                                                                 Background="{Binding Color, Converter={StaticResource HexColorToBrushConverter}, ConverterParameter=#0078d4}"
+                                                                BorderBrush="{Binding BorderColor, Converter={StaticResource HexColorToBrushConverter}, ConverterParameter=#00000000}"
+                                                                BorderThickness="{Binding BorderThickness}"
                                                                 CornerRadius="4"
                                                                 Visibility="{Binding NormalVisibility}">
                                                                 <TextBlock

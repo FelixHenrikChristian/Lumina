@@ -1210,7 +1210,9 @@ public sealed class FileExplorerViewModel : ObservableObject
 
             styles[name] = new FileTagStyle(
                 tag.Color,
-                tag.TextColor ?? "#ffffff");
+                tag.TextColor ?? "#ffffff",
+                "#00000000",
+                new Thickness(0));
         }
 
         return styles;
@@ -1664,9 +1666,15 @@ public sealed class FileExplorerItemViewModel : ObservableObject
 
 public sealed record FileTagStyle(
     string Color,
-    string TextColor)
+    string TextColor,
+    string BorderColor,
+    Thickness BorderThickness)
 {
-    public static FileTagStyle Fallback { get; } = new("#0078d4", "#ffffff");
+    public static FileTagStyle Fallback { get; } = new(
+        "#14808080",
+        "#8a8a8a",
+        "#998a8a8a",
+        new Thickness(1));
 }
 
 public sealed class FileTagChipViewModel
@@ -1675,12 +1683,16 @@ public sealed class FileTagChipViewModel
         string name,
         bool isPreview,
         string color,
-        string textColor)
+        string textColor,
+        string borderColor,
+        Thickness borderThickness)
     {
         Name = name;
         IsPreview = isPreview;
         Color = color;
         TextColor = textColor;
+        BorderColor = borderColor;
+        BorderThickness = borderThickness;
     }
 
     public string Name { get; }
@@ -1690,6 +1702,10 @@ public sealed class FileTagChipViewModel
     public string Color { get; }
 
     public string TextColor { get; }
+
+    public string BorderColor { get; }
+
+    public Thickness BorderThickness { get; }
 
     public Visibility NormalVisibility => IsPreview
         ? Visibility.Collapsed
@@ -1707,7 +1723,9 @@ public sealed class FileTagChipViewModel
             name,
             isPreview: false,
             style.Color,
-            style.TextColor);
+            style.TextColor,
+            style.BorderColor,
+            style.BorderThickness);
     }
 
     public static FileTagChipViewModel CreatePreview(
@@ -1719,6 +1737,8 @@ public sealed class FileTagChipViewModel
             name,
             isPreview: true,
             string.IsNullOrWhiteSpace(color) ? "#0078d4" : color.Trim(),
-            string.IsNullOrWhiteSpace(textColor) ? "#ffffff" : textColor.Trim());
+            string.IsNullOrWhiteSpace(textColor) ? "#ffffff" : textColor.Trim(),
+            string.IsNullOrWhiteSpace(color) ? "#0078d4" : color.Trim(),
+            new Thickness(1));
     }
 }
