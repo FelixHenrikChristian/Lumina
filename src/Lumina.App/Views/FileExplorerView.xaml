@@ -521,6 +521,7 @@
 
             <ScrollViewer
                 x:Name="FileGridScrollViewer"
+                Background="Transparent"
                 HorizontalScrollBarVisibility="Disabled"
                 HorizontalScrollMode="Disabled"
                 IsTabStop="True"

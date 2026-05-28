@@ -144,7 +144,7 @@ public sealed class FileExplorerViewModel : ObservableObject
     public Visibility ErrorVisibility => HasError ? Visibility.Visible : Visibility.Collapsed;
 
     public Visibility FileGridVisibility =>
-        !IsBusy && _currentLocation is not null && HasFiles
+        !IsBusy && !HasError && _currentLocation is not null
             ? Visibility.Visible
             : Visibility.Collapsed;
 
