@@ -192,6 +192,49 @@ public sealed class FileSystemBrowserServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task FilterDirectoryByTagsAsync_ReturnsFilesContainingAllTagsRecursively()
+    {
+        var childDirectory = Directory.CreateDirectory(Path.Combine(_temporaryDirectory, "Child"));
+        Directory.CreateDirectory(Path.Combine(_temporaryDirectory, "[work urgent] Folder"));
+        await File.WriteAllTextAsync(Path.Combine(_temporaryDirectory, "[work urgent] Root.txt"), "tagged");
+        await File.WriteAllTextAsync(Path.Combine(childDirectory.FullName, "[work urgent] Nested.txt"), "tagged");
+        await File.WriteAllTextAsync(Path.Combine(childDirectory.FullName, "[work] Missing.txt"), "missing");
+        await File.WriteAllTextAsync(Path.Combine(childDirectory.FullName, "[Work URGENT] Case.txt"), "case");
+
+        var items = await _service.FilterDirectoryByTagsAsync(_temporaryDirectory, ["work", "urgent"]);
+
+        Assert.Equal(
+            ["Case.txt", "Nested.txt", "Root.txt"],
+            items.Select(item => item.DisplayName));
+        Assert.DoesNotContain(items, item => item.IsDirectory);
+        Assert.Equal(
+            ".",
+            items.Single(item => item.DisplayName == "Root.txt").RelativePath);
+        Assert.Equal(
+            "Child",
+            items.Single(item => item.DisplayName == "Nested.txt").RelativePath);
+    }
+
+    [Fact]
+    public async Task FilterDirectoryByTagsAsync_AppliesQueryAndSortOptions()
+    {
+        await File.WriteAllTextAsync(Path.Combine(_temporaryDirectory, "[work urgent] alpha-match.txt"), "a");
+        await File.WriteAllTextAsync(Path.Combine(_temporaryDirectory, "[work urgent] zeta-match.txt"), "z");
+        await File.WriteAllTextAsync(Path.Combine(_temporaryDirectory, "[work urgent] skipped-note.txt"), "skip");
+        await File.WriteAllTextAsync(Path.Combine(_temporaryDirectory, "[work] beta-match.txt"), "missing");
+
+        var items = await _service.FilterDirectoryByTagsAsync(
+            _temporaryDirectory,
+            ["work", "urgent"],
+            "match",
+            new FileSortOptions(FileSortField.Name, FileSortDirection.Descending));
+
+        Assert.Equal(
+            ["zeta-match.txt", "alpha-match.txt"],
+            items.Select(item => item.DisplayName));
+    }
+
+    [Fact]
     public async Task CreateDirectoryAsync_CreatesFolderWithPreferredName()
     {
         var createdPath = await _service.CreateDirectoryAsync(_temporaryDirectory, "New folder");

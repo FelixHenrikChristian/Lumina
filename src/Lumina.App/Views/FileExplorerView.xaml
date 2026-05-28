@@ -272,14 +272,21 @@
                 Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
                 BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                 BorderThickness="0,0,0,1">
-                <CommandBar
-                    Padding="8,0,8,0"
-                    HorizontalAlignment="Left"
-                    Background="Transparent"
-                    DefaultLabelPosition="Collapsed"
-                    IsDynamicOverflowEnabled="False"
-                    IsOpen="False">
-                    <CommandBar.PrimaryCommands>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <CommandBar
+                        Grid.Column="0"
+                        Padding="8,0,8,0"
+                        HorizontalAlignment="Left"
+                        Background="Transparent"
+                        DefaultLabelPosition="Collapsed"
+                        IsDynamicOverflowEnabled="False"
+                        IsOpen="False">
+                        <CommandBar.PrimaryCommands>
                         <AppBarElementContainer Style="{StaticResource ExplorerCommandContainerStyle}">
                             <Button
                                 AutomationProperties.Name="New"
@@ -447,8 +454,163 @@
                                 </StackPanel>
                             </Button>
                         </AppBarElementContainer>
+
+                        </CommandBar.PrimaryCommands>
+                    </CommandBar>
+
+                    <CommandBar
+                        Grid.Column="1"
+                        Padding="8,0,8,0"
+                        HorizontalAlignment="Right"
+                        Background="Transparent"
+                        DefaultLabelPosition="Collapsed"
+                        IsDynamicOverflowEnabled="False"
+                        IsOpen="False">
+                        <CommandBar.PrimaryCommands>
+
+                        <AppBarElementContainer Style="{StaticResource ExplorerCommandContainerStyle}">
+                            <Button
+                                AutomationProperties.Name="Tag filter"
+                                IsEnabled="{Binding CanUseTagFilters}"
+                                Style="{StaticResource ExplorerCommandTextButtonStyle}"
+                                ToolTipService.ToolTip="Tag filter">
+                                <Button.Flyout>
+                                    <Flyout
+                                        Opened="TagFilterFlyout_Opened"
+                                        Placement="BottomEdgeAlignedRight">
+                                        <Grid
+                                            Width="320"
+                                            MaxHeight="440"
+                                            Padding="14"
+                                            RowSpacing="12">
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="*" />
+                                            </Grid.RowDefinitions>
+
+                                            <Grid ColumnSpacing="10">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <StackPanel
+                                                    VerticalAlignment="Center"
+                                                    Orientation="Horizontal"
+                                                    Spacing="8">
+                                                    <FontIcon
+                                                        FontFamily="Segoe Fluent Icons"
+                                                        FontSize="14"
+                                                        Glyph="&#xE71C;" />
+                                                    <TextBlock
+                                                        VerticalAlignment="Center"
+                                                        FontWeight="SemiBold"
+                                                        Text="Tag filter" />
+                                                </StackPanel>
+
+                                                <Button
+                                                    Grid.Column="1"
+                                                    Width="28"
+                                                    Height="28"
+                                                    MinWidth="0"
+                                                    Padding="0"
+                                                    Click="ClearTagFiltersButton_Click"
+                                                    IsEnabled="{Binding CanClearTagFilters}"
+                                                    Style="{StaticResource ExplorerNavigationButtonStyle}"
+                                                    ToolTipService.ToolTip="Clear tag filter">
+                                                    <FontIcon
+                                                        FontFamily="Segoe Fluent Icons"
+                                                        FontSize="11"
+                                                        Glyph="&#xE711;" />
+                                                </Button>
+                                            </Grid>
+
+                                            <TextBlock
+                                                Grid.Row="1"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="No tags in library."
+                                                Visibility="{Binding TagFilterEmptyVisibility}" />
+
+                                            <ScrollViewer
+                                                Grid.Row="1"
+                                                HorizontalScrollBarVisibility="Disabled"
+                                                HorizontalScrollMode="Disabled"
+                                                MaxHeight="360"
+                                                VerticalScrollBarVisibility="Auto"
+                                                VerticalScrollMode="Enabled"
+                                                Visibility="{Binding TagFilterGroupListVisibility}">
+                                                <ItemsControl ItemsSource="{Binding TagFilterGroups}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <StackPanel Margin="0,0,0,14" Spacing="6">
+                                                                <TextBlock
+                                                                    FontSize="12"
+                                                                    FontWeight="SemiBold"
+                                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                    Text="{Binding Name}"
+                                                                    TextTrimming="CharacterEllipsis" />
+
+                                                                <TextBlock
+                                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                    Text="No tags"
+                                                                    Visibility="{Binding EmptyTagsVisibility}" />
+
+                                                                <ItemsControl
+                                                                    ItemsSource="{Binding Tags}"
+                                                                    Visibility="{Binding TagsVisibility}">
+                                                                    <ItemsControl.ItemsPanel>
+                                                                        <ItemsPanelTemplate>
+                                                                            <controls:WrapPanel />
+                                                                        </ItemsPanelTemplate>
+                                                                    </ItemsControl.ItemsPanel>
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate>
+                                                                            <Button
+                                                                                MinWidth="0"
+                                                                                MinHeight="0"
+                                                                                Margin="0,0,6,6"
+                                                                                Padding="9,4"
+                                                                                Background="{Binding Color, Converter={StaticResource HexColorToBrushConverter}, ConverterParameter=#0078d4}"
+                                                                                BorderBrush="{Binding Color, Converter={StaticResource HexColorToBrushConverter}, ConverterParameter=#0078d4}"
+                                                                                BorderThickness="1"
+                                                                                Click="TagFilterChip_Click"
+                                                                                CornerRadius="4"
+                                                                                Opacity="{Binding ChipOpacity}"
+                                                                                ToolTipService.ToolTip="{Binding Name}">
+                                                                                <TextBlock
+                                                                                    FontSize="12"
+                                                                                    Foreground="{Binding TextColor, Converter={StaticResource HexColorToBrushConverter}, ConverterParameter=#ffffff}"
+                                                                                    Text="{Binding Name}"
+                                                                                    TextTrimming="CharacterEllipsis" />
+                                                                            </Button>
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </ScrollViewer>
+                                        </Grid>
+                                    </Flyout>
+                                </Button.Flyout>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon
+                                        FontFamily="Segoe Fluent Icons"
+                                        FontSize="14"
+                                        Glyph="&#xE71C;" />
+                                    <TextBlock VerticalAlignment="Center" Text="{Binding TagFilterButtonText}" />
+                                    <FontIcon
+                                        FontFamily="Segoe Fluent Icons"
+                                        FontSize="10"
+                                        Glyph="&#xE70D;" />
+                                </StackPanel>
+                            </Button>
+                        </AppBarElementContainer>
+
                     </CommandBar.PrimaryCommands>
                 </CommandBar>
+                </Grid>
             </Border>
         </Grid>
 

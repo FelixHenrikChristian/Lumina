@@ -23,6 +23,7 @@ public sealed class FileExplorerViewModel : ObservableObject
     private readonly ITagParserService _tagParserService;
     private readonly List<string> _backStack = [];
     private readonly List<string> _forwardStack = [];
+    private readonly HashSet<string> _selectedTagFilterIds = new(StringComparer.Ordinal);
 
     private string _currentPath = string.Empty;
     private string _currentLocationName = string.Empty;
@@ -85,6 +86,8 @@ public sealed class FileExplorerViewModel : ObservableObject
     }
 
     public ObservableCollection<FileExplorerItemViewModel> Files { get; } = [];
+
+    public ObservableCollection<FileExplorerTagFilterGroupViewModel> TagFilterGroups { get; } = [];
 
     public string CurrentPath
     {
@@ -165,9 +168,19 @@ public sealed class FileExplorerViewModel : ObservableObject
 
     public bool CanSort => CanUseFolderCommands;
 
+    public bool CanUseTagFilters => CanUseFolderCommands;
+
+    public bool CanClearTagFilters => HasActiveTagFilters && CanUseFolderCommands;
+
     public bool HasFiles => Files.Count > 0;
 
     public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
+
+    public bool HasTagFilterGroups => TagFilterGroups.Any(group => group.Tags.Count > 0);
+
+    public bool HasActiveTagFilters => _selectedTagFilterIds.Count > 0;
+
+    public string TagFilterButtonText => "Tags";
 
     public Visibility BusyVisibility => IsBusy ? Visibility.Visible : Visibility.Collapsed;
 
@@ -187,6 +200,12 @@ public sealed class FileExplorerViewModel : ObservableObject
         !IsBusy && !HasError && _currentLocation is null
             ? Visibility.Visible
             : Visibility.Collapsed;
+
+    public Visibility TagFilterGroupListVisibility =>
+        HasTagFilterGroups ? Visibility.Visible : Visibility.Collapsed;
+
+    public Visibility TagFilterEmptyVisibility =>
+        HasTagFilterGroups ? Visibility.Collapsed : Visibility.Visible;
 
     public string SearchQuery
     {
@@ -219,6 +238,7 @@ public sealed class FileExplorerViewModel : ObservableObject
             CurrentPath = string.Empty;
             CurrentLocationName = location?.Name ?? string.Empty;
             ClearSearchQuery();
+            ClearTagFilters();
             _backStack.Clear();
             _forwardStack.Clear();
             ClearSelection();
@@ -233,6 +253,7 @@ public sealed class FileExplorerViewModel : ObservableObject
         CurrentPath = _currentLocationScope?.RootPath ?? string.Empty;
         CurrentLocationName = location?.Name ?? string.Empty;
         ClearSearchQuery();
+        ClearTagFilters();
         _backStack.Clear();
         _forwardStack.Clear();
         ClearSelection();
@@ -409,6 +430,7 @@ public sealed class FileExplorerViewModel : ObservableObject
         if (IsSameDirectory(CurrentPath, targetPath))
         {
             ClearSearchQuery();
+            ClearTagFilters();
             ClearSelection();
             await LoadCurrentDirectoryAsync(cancellationToken);
             return;
@@ -422,6 +444,7 @@ public sealed class FileExplorerViewModel : ObservableObject
         _forwardStack.Clear();
         CurrentPath = targetPath;
         ClearSearchQuery();
+        ClearTagFilters();
         ClearSelection();
         await LoadCurrentDirectoryAsync(cancellationToken);
     }
@@ -432,16 +455,50 @@ public sealed class FileExplorerViewModel : ObservableObject
         {
             var tagGroups = await _tagGroupStore.LoadAsync(cancellationToken);
             _tagStyles = CreateTagStyles(tagGroups);
+            RefreshTagFilterGroups(tagGroups);
         }
         catch (Exception)
         {
             _tagStyles = new Dictionary<string, FileTagStyle>(StringComparer.OrdinalIgnoreCase);
+            RefreshTagFilterGroups([]);
         }
 
         foreach (var file in Files)
         {
             file.ApplyTagStyles(_tagStyles);
         }
+    }
+
+    public async Task ToggleTagFilterAsync(
+        FileExplorerTagFilterItemViewModel tag,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(tag);
+
+        if (tag.IsSelected)
+        {
+            _selectedTagFilterIds.Remove(tag.Id);
+            tag.IsSelected = false;
+        }
+        else
+        {
+            _selectedTagFilterIds.Add(tag.Id);
+            tag.IsSelected = true;
+        }
+
+        OnTagFilterStateChanged();
+        await LoadCurrentDirectoryAsync(cancellationToken);
+    }
+
+    public async Task ClearTagFiltersAsync(CancellationToken cancellationToken = default)
+    {
+        if (!HasActiveTagFilters)
+        {
+            return;
+        }
+
+        ClearTagFilters();
+        await LoadCurrentDirectoryAsync(cancellationToken);
     }
 
     public async Task OpenContainingDirectoryAsync(
@@ -474,6 +531,7 @@ public sealed class FileExplorerViewModel : ObservableObject
 
         CurrentPath = targetPath;
         ClearSearchQuery();
+        ClearTagFilters();
         ClearSelection();
         await LoadCurrentDirectoryAsync(cancellationToken);
     }
@@ -492,6 +550,7 @@ public sealed class FileExplorerViewModel : ObservableObject
 
         CurrentPath = targetPath;
         ClearSearchQuery();
+        ClearTagFilters();
         ClearSelection();
         await LoadCurrentDirectoryAsync(cancellationToken);
     }
@@ -881,7 +940,15 @@ public sealed class FileExplorerViewModel : ObservableObject
         try
         {
             var currentPath = NormalizeContainedPath(CurrentPath);
-            var files = string.IsNullOrWhiteSpace(SearchQuery)
+            var activeTagFilterNames = GetActiveTagFilterNames();
+            var files = activeTagFilterNames.Count > 0
+                ? await _fileBrowserService.FilterDirectoryByTagsAsync(
+                    currentPath,
+                    activeTagFilterNames,
+                    SearchQuery,
+                    _sortOptions,
+                    loadCancellation.Token)
+                : string.IsNullOrWhiteSpace(SearchQuery)
                 ? await _fileBrowserService.LoadDirectoryAsync(
                     currentPath,
                     _sortOptions,
@@ -1003,6 +1070,8 @@ public sealed class FileExplorerViewModel : ObservableObject
         OnPropertyChanged(nameof(CanUseFolderCommands));
         OnPropertyChanged(nameof(CanUseSelectedFileCommands));
         OnPropertyChanged(nameof(CanSort));
+        OnPropertyChanged(nameof(CanUseTagFilters));
+        OnPropertyChanged(nameof(CanClearTagFilters));
         OnPropertyChanged(nameof(BreadcrumbItems));
         OnPropertyChanged(nameof(SearchPlaceholderText));
         OnPropertyChanged(nameof(HasFiles));
@@ -1090,6 +1159,22 @@ public sealed class FileExplorerViewModel : ObservableObject
         SearchQuery = string.Empty;
     }
 
+    private void ClearTagFilters()
+    {
+        if (!HasActiveTagFilters)
+        {
+            return;
+        }
+
+        _selectedTagFilterIds.Clear();
+        foreach (var tag in TagFilterGroups.SelectMany(group => group.Tags))
+        {
+            tag.IsSelected = false;
+        }
+
+        OnTagFilterStateChanged();
+    }
+
     private void ClearSelection()
     {
         ClearSelectedFiles();
@@ -1118,6 +1203,45 @@ public sealed class FileExplorerViewModel : ObservableObject
     private static int CalculateThumbnailRequestSize(double cardWidth)
     {
         return Math.Clamp((int)Math.Ceiling(cardWidth * 2), 128, 1024);
+    }
+
+    private IReadOnlyList<string> GetActiveTagFilterNames()
+    {
+        return TagFilterGroups
+            .SelectMany(group => group.Tags)
+            .Where(tag => _selectedTagFilterIds.Contains(tag.Id))
+            .Select(tag => tag.Name)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private void RefreshTagFilterGroups(IReadOnlyList<TagGroup> tagGroups)
+    {
+        var availableTagIds = tagGroups
+            .SelectMany(group => group.Tags)
+            .Select(tag => tag.Id)
+            .ToHashSet(StringComparer.Ordinal);
+
+        _selectedTagFilterIds.RemoveWhere(tagId => !availableTagIds.Contains(tagId));
+
+        TagFilterGroups.Clear();
+        foreach (var group in tagGroups)
+        {
+            TagFilterGroups.Add(new FileExplorerTagFilterGroupViewModel(group, _selectedTagFilterIds));
+        }
+
+        OnPropertyChanged(nameof(HasTagFilterGroups));
+        OnPropertyChanged(nameof(TagFilterGroupListVisibility));
+        OnPropertyChanged(nameof(TagFilterEmptyVisibility));
+        OnTagFilterStateChanged();
+    }
+
+    private void OnTagFilterStateChanged()
+    {
+        OnPropertyChanged(nameof(HasActiveTagFilters));
+        OnPropertyChanged(nameof(CanClearTagFilters));
+        OnPropertyChanged(nameof(TagFilterButtonText));
     }
 
     private string NormalizeContainedPath(string path)
@@ -1253,6 +1377,66 @@ public sealed class FileExplorerViewModel : ObservableObject
 }
 
 public sealed record FileExplorerBreadcrumbItemViewModel(string Name, string Path);
+
+public sealed class FileExplorerTagFilterGroupViewModel
+{
+    public FileExplorerTagFilterGroupViewModel(
+        TagGroup group,
+        IReadOnlySet<string> selectedTagIds)
+    {
+        Model = group;
+        Tags = [.. group.Tags.Select(tag => new FileExplorerTagFilterItemViewModel(
+            tag,
+            selectedTagIds.Contains(tag.Id)))];
+    }
+
+    public TagGroup Model { get; }
+
+    public ObservableCollection<FileExplorerTagFilterItemViewModel> Tags { get; }
+
+    public string Id => Model.Id;
+
+    public string Name => Model.Name;
+
+    public Visibility EmptyTagsVisibility => Tags.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    public Visibility TagsVisibility => Tags.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+}
+
+public sealed class FileExplorerTagFilterItemViewModel : ObservableObject
+{
+    private bool _isSelected;
+
+    public FileExplorerTagFilterItemViewModel(Tag tag, bool isSelected)
+    {
+        Model = tag;
+        _isSelected = isSelected;
+    }
+
+    public Tag Model { get; }
+
+    public string Id => Model.Id;
+
+    public string Name => Model.Name;
+
+    public string Color => Model.Color;
+
+    public string TextColor => Model.TextColor ?? "#ffffff";
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (SetProperty(ref _isSelected, value))
+            {
+                OnPropertyChanged(nameof(ChipOpacity));
+            }
+        }
+    }
+
+    public double ChipOpacity => IsSelected ? 1 : 0.38;
+}
 
 public sealed class FileExplorerItemViewModel : ObservableObject
 {

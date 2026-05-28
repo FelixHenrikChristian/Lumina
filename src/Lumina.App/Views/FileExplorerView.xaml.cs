@@ -314,7 +314,12 @@ public sealed partial class FileExplorerView : UserControl
 
     private async void TagLibraryEvents_Changed(object? sender, EventArgs e)
     {
+        var hadActiveTagFilters = ViewModel.HasActiveTagFilters;
         await ViewModel.LoadTagLibraryAsync();
+        if (hadActiveTagFilters || ViewModel.HasActiveTagFilters)
+        {
+            await ViewModel.RefreshAsync();
+        }
     }
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
@@ -421,6 +426,43 @@ public sealed partial class FileExplorerView : UserControl
         }
 
         CreateSortMenuFlyout().ShowAt(anchor);
+    }
+
+    private async void TagFilterFlyout_Opened(object sender, object e)
+    {
+        if (sender is Flyout { Content: FrameworkElement content })
+        {
+            content.DataContext = ViewModel;
+        }
+
+        await ViewModel.LoadTagLibraryAsync();
+    }
+
+    private async void TagFilterChip_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: FileExplorerTagFilterItemViewModel tag })
+        {
+            return;
+        }
+
+        CancelPendingSearch();
+        CancelInlineRename();
+        _isSearchTextComposing = false;
+
+        await ViewModel.ToggleTagFilterAsync(tag);
+        ScrollToTop();
+        FileGridScrollViewer.Focus(FocusState.Programmatic);
+    }
+
+    private async void ClearTagFiltersButton_Click(object sender, RoutedEventArgs e)
+    {
+        CancelPendingSearch();
+        CancelInlineRename();
+        _isSearchTextComposing = false;
+
+        await ViewModel.ClearTagFiltersAsync();
+        ScrollToTop();
+        FileGridScrollViewer.Focus(FocusState.Programmatic);
     }
 
     private async void RelativePathButton_Click(object sender, RoutedEventArgs e)

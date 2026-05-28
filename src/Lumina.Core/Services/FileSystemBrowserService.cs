@@ -120,6 +120,54 @@ public sealed class FileSystemBrowserService : IFileBrowserService
             cancellationToken);
     }
 
+    public Task<IReadOnlyList<FileItem>> FilterDirectoryByTagsAsync(
+        string directoryPath,
+        IReadOnlyList<string> requiredTags,
+        CancellationToken cancellationToken = default)
+    {
+        return FilterDirectoryByTagsAsync(
+            directoryPath,
+            requiredTags,
+            FileSortOptions.Default,
+            cancellationToken);
+    }
+
+    public Task<IReadOnlyList<FileItem>> FilterDirectoryByTagsAsync(
+        string directoryPath,
+        IReadOnlyList<string> requiredTags,
+        FileSortOptions sortOptions,
+        CancellationToken cancellationToken = default)
+    {
+        return FilterDirectoryByTagsAsync(
+            directoryPath,
+            requiredTags,
+            string.Empty,
+            sortOptions,
+            cancellationToken);
+    }
+
+    public Task<IReadOnlyList<FileItem>> FilterDirectoryByTagsAsync(
+        string directoryPath,
+        IReadOnlyList<string> requiredTags,
+        string query,
+        FileSortOptions sortOptions,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(directoryPath);
+        ArgumentNullException.ThrowIfNull(requiredTags);
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentNullException.ThrowIfNull(sortOptions);
+
+        return Task.Run(
+            () => FilterDirectoryByTags(
+                directoryPath.Trim(),
+                requiredTags,
+                query.Trim(),
+                sortOptions,
+                cancellationToken),
+            cancellationToken);
+    }
+
     public async Task<string> CreateDirectoryAsync(
         string parentDirectoryPath,
         string preferredName,
@@ -365,6 +413,43 @@ public sealed class FileSystemBrowserService : IFileBrowserService
                     return CreateFileItem(info, directory.FullName);
                 })
                 .Where(item => MatchesQuery(item, query)),
+            sortOptions,
+            includePathTieBreaker: true);
+    }
+
+    private IReadOnlyList<FileItem> FilterDirectoryByTags(
+        string directoryPath,
+        IReadOnlyList<string> requiredTags,
+        string query,
+        FileSortOptions sortOptions,
+        CancellationToken cancellationToken)
+    {
+        var normalizedRequiredTags = NormalizeRequiredTags(requiredTags);
+        if (normalizedRequiredTags.Count == 0)
+        {
+            return string.IsNullOrWhiteSpace(query)
+                ? LoadDirectory(directoryPath, sortOptions, cancellationToken)
+                : SearchDirectory(directoryPath, query, sortOptions, cancellationToken);
+        }
+
+        var directory = new DirectoryInfo(directoryPath);
+        if (!directory.Exists)
+        {
+            throw new DirectoryNotFoundException($"Directory not found: {directoryPath}");
+        }
+
+        return SortFileItems(
+            directory
+                .EnumerateFileSystemInfos("*", RecursiveEnumerationOptions)
+                .Select(info =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return CreateFileItem(info, directory.FullName);
+                })
+                .Where(item =>
+                    !item.IsDirectory &&
+                    MatchesRequiredTags(item, normalizedRequiredTags) &&
+                    (string.IsNullOrWhiteSpace(query) || MatchesQuery(item, query))),
             sortOptions,
             includePathTieBreaker: true);
     }
@@ -803,6 +888,24 @@ public sealed class FileSystemBrowserService : IFileBrowserService
         return item.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase) ||
             item.DisplayName.Contains(query, StringComparison.CurrentCultureIgnoreCase) ||
             item.Tags.Any(tag => tag.Contains(query, StringComparison.CurrentCultureIgnoreCase));
+    }
+
+    private static bool MatchesRequiredTags(
+        FileItem item,
+        IReadOnlySet<string> requiredTags)
+    {
+        var fileTags = item.Tags.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return requiredTags.All(fileTags.Contains);
+    }
+
+    private static IReadOnlySet<string> NormalizeRequiredTags(
+        IReadOnlyList<string> requiredTags)
+    {
+        return requiredTags
+            .Where(tag => !string.IsNullOrWhiteSpace(tag))
+            .Select(tag => tag.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyList<FileItem> SortFileItems(

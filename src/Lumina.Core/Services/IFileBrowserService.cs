@@ -24,6 +24,24 @@ public interface IFileBrowserService
         FileSortOptions sortOptions,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<FileItem>> FilterDirectoryByTagsAsync(
+        string directoryPath,
+        IReadOnlyList<string> requiredTags,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<FileItem>> FilterDirectoryByTagsAsync(
+        string directoryPath,
+        IReadOnlyList<string> requiredTags,
+        FileSortOptions sortOptions,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<FileItem>> FilterDirectoryByTagsAsync(
+        string directoryPath,
+        IReadOnlyList<string> requiredTags,
+        string query,
+        FileSortOptions sortOptions,
+        CancellationToken cancellationToken = default);
+
     Task<string> CreateDirectoryAsync(
         string parentDirectoryPath,
         string preferredName,
