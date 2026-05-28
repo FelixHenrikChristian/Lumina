@@ -222,6 +222,27 @@ public sealed class FileSystemBrowserServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateDirectoryWithResultAsync_UndoRedoRemovesAndRecreatesFolder()
+    {
+        var result = await _service.CreateDirectoryWithResultAsync(
+            _temporaryDirectory,
+            "New folder");
+        var createdPath = Assert.Single(result.Paths);
+
+        Assert.Equal(FileOperationKind.Create, result.Operation);
+        Assert.Equal(FileOperationEntryKind.Created, Assert.Single(result.Entries).Kind);
+        Assert.True(Directory.Exists(createdPath));
+
+        await _service.UndoFileOperationAsync(result);
+
+        Assert.False(Directory.Exists(createdPath));
+
+        await _service.RedoFileOperationAsync(result);
+
+        Assert.True(Directory.Exists(createdPath));
+    }
+
+    [Fact]
     public async Task RenameAsync_RenamesFileInPlace()
     {
         var filePath = Path.Combine(_temporaryDirectory, "old.txt");
@@ -245,6 +266,34 @@ public sealed class FileSystemBrowserServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task RenameWithResultAsync_UndoRedoRenamesFile()
+    {
+        var filePath = Path.Combine(_temporaryDirectory, "old.txt");
+        await File.WriteAllTextAsync(filePath, "content");
+
+        var result = await _service.RenameWithResultAsync(filePath, "new.txt");
+        var renamedPath = Assert.Single(result.Paths);
+
+        Assert.Equal(FileOperationKind.Rename, result.Operation);
+        Assert.Equal(FileOperationEntryKind.Renamed, Assert.Single(result.Entries).Kind);
+        Assert.Equal(Path.Combine(_temporaryDirectory, "new.txt"), renamedPath);
+        Assert.False(File.Exists(filePath));
+        Assert.Equal("content", await File.ReadAllTextAsync(renamedPath));
+
+        await _service.UndoFileOperationAsync(result);
+
+        Assert.True(File.Exists(filePath));
+        Assert.False(File.Exists(renamedPath));
+        Assert.Equal("content", await File.ReadAllTextAsync(filePath));
+
+        await _service.RedoFileOperationAsync(result);
+
+        Assert.False(File.Exists(filePath));
+        Assert.True(File.Exists(renamedPath));
+        Assert.Equal("content", await File.ReadAllTextAsync(renamedPath));
+    }
+
+    [Fact]
     public async Task DeleteAsync_PermanentDeletesFilesAndDirectories()
     {
         var filePath = Path.Combine(_temporaryDirectory, "delete.txt");
@@ -256,6 +305,37 @@ public sealed class FileSystemBrowserServiceTests : IDisposable
         await _service.DeleteAsync(
             [filePath, directoryPath],
             FileDeleteBehavior.Permanent);
+
+        Assert.False(File.Exists(filePath));
+        Assert.False(Directory.Exists(directoryPath));
+    }
+
+    [Fact]
+    public async Task DeleteWithResultAsync_UndoRedoRestoresDeletedFileAndDirectory()
+    {
+        var filePath = Path.Combine(_temporaryDirectory, "delete.txt");
+        var directoryPath = Path.Combine(_temporaryDirectory, "Delete Folder");
+        Directory.CreateDirectory(directoryPath);
+        await File.WriteAllTextAsync(filePath, "delete");
+        await File.WriteAllTextAsync(Path.Combine(directoryPath, "child.txt"), "child");
+
+        var result = await _service.DeleteWithResultAsync(
+            [filePath, directoryPath],
+            FileDeleteBehavior.Permanent);
+
+        Assert.Equal(FileOperationKind.Delete, result.Operation);
+        Assert.Equal(
+            [FileOperationEntryKind.Deleted, FileOperationEntryKind.Deleted],
+            result.Entries.Select(entry => entry.Kind));
+        Assert.False(File.Exists(filePath));
+        Assert.False(Directory.Exists(directoryPath));
+
+        await _service.UndoFileOperationAsync(result);
+
+        Assert.Equal("delete", await File.ReadAllTextAsync(filePath));
+        Assert.Equal("child", await File.ReadAllTextAsync(Path.Combine(directoryPath, "child.txt")));
+
+        await _service.RedoFileOperationAsync(result);
 
         Assert.False(File.Exists(filePath));
         Assert.False(Directory.Exists(directoryPath));

@@ -159,6 +159,9 @@ public sealed partial class FileExplorerView : UserControl
         {
             return operation switch
             {
+                FileOperationKind.Create => "create",
+                FileOperationKind.Rename => "rename",
+                FileOperationKind.Delete => "delete",
                 FileOperationKind.Move => "move",
                 _ => "copy",
             };
@@ -168,6 +171,9 @@ public sealed partial class FileExplorerView : UserControl
         {
             return operation switch
             {
+                FileOperationKind.Create => "Create",
+                FileOperationKind.Rename => "Rename",
+                FileOperationKind.Delete => "Delete",
                 FileOperationKind.Move => "Move",
                 _ => "Copy",
             };
@@ -177,6 +183,9 @@ public sealed partial class FileExplorerView : UserControl
         {
             return operation switch
             {
+                FileOperationKind.Create => "Creating",
+                FileOperationKind.Rename => "Renaming",
+                FileOperationKind.Delete => "Deleting",
                 FileOperationKind.Move => "Moving",
                 _ => "Copying",
             };
@@ -1098,7 +1107,10 @@ public sealed partial class FileExplorerView : UserControl
         await RunFileOperationAsync(
             async () =>
             {
-                var folder = await ViewModel.CreateFolderAsync();
+                var operationResult = await ViewModel.CreateFolderAsync();
+                RecordFileOperation(operationResult);
+
+                var folder = ViewModel.SelectedFile;
                 if (folder is null)
                 {
                     return;
@@ -1230,7 +1242,8 @@ public sealed partial class FileExplorerView : UserControl
                 return;
             }
 
-            await ViewModel.RenameFileAsync(file, newFileSystemName);
+            var operationResult = await ViewModel.RenameFileAsync(file, newFileSystemName);
+            RecordFileOperation(operationResult);
             EndInlineRename(file);
             if (restoreGridFocus)
             {
@@ -1284,13 +1297,18 @@ public sealed partial class FileExplorerView : UserControl
             return;
         }
 
+        FileOperationResult? operationResult = null;
         await RunFileOperationAsync(
-            () => ViewModel.DeleteFilesAsync(
-                files,
-                permanently
-                    ? FileDeleteBehavior.Permanent
-                    : FileDeleteBehavior.RecycleBin),
+            async () =>
+            {
+                operationResult = await ViewModel.DeleteFilesAsync(
+                    files,
+                    permanently
+                        ? FileDeleteBehavior.Permanent
+                        : FileDeleteBehavior.RecycleBin);
+            },
             "Delete failed");
+        RecordFileOperation(operationResult);
         FileGridScrollViewer.Focus(FocusState.Programmatic);
     }
 
@@ -2156,9 +2174,14 @@ public sealed partial class FileExplorerView : UserControl
     {
         var itemText = itemCount == 1 ? "1 item" : $"{itemCount} items";
 
-        return operation == FileOperationKind.Move
-            ? $"Moving {itemText}"
-            : $"Copying {itemText}";
+        return operation switch
+        {
+            FileOperationKind.Create => $"Creating {itemText}",
+            FileOperationKind.Rename => $"Renaming {itemText}",
+            FileOperationKind.Delete => $"Deleting {itemText}",
+            FileOperationKind.Move => $"Moving {itemText}",
+            _ => $"Copying {itemText}",
+        };
     }
 
     private MenuFlyout CreateSortMenuFlyout()

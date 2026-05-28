@@ -120,7 +120,20 @@ public sealed class FileSystemBrowserService : IFileBrowserService
             cancellationToken);
     }
 
-    public Task<string> CreateDirectoryAsync(
+    public async Task<string> CreateDirectoryAsync(
+        string parentDirectoryPath,
+        string preferredName,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await CreateDirectoryWithResultAsync(
+            parentDirectoryPath,
+            preferredName,
+            cancellationToken);
+
+        return result.Paths.Single();
+    }
+
+    public Task<FileOperationResult> CreateDirectoryWithResultAsync(
         string parentDirectoryPath,
         string preferredName,
         CancellationToken cancellationToken = default)
@@ -129,11 +142,24 @@ public sealed class FileSystemBrowserService : IFileBrowserService
         ArgumentException.ThrowIfNullOrWhiteSpace(preferredName);
 
         return Task.Run(
-            () => CreateDirectory(parentDirectoryPath.Trim(), preferredName.Trim(), cancellationToken),
+            () => CreateDirectoryWithResult(parentDirectoryPath.Trim(), preferredName.Trim(), cancellationToken),
             cancellationToken);
     }
 
-    public Task<string> RenameAsync(
+    public async Task<string> RenameAsync(
+        string path,
+        string newName,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await RenameWithResultAsync(
+            path,
+            newName,
+            cancellationToken);
+
+        return result.Paths.Single();
+    }
+
+    public Task<FileOperationResult> RenameWithResultAsync(
         string path,
         string newName,
         CancellationToken cancellationToken = default)
@@ -142,7 +168,7 @@ public sealed class FileSystemBrowserService : IFileBrowserService
         ArgumentException.ThrowIfNullOrWhiteSpace(newName);
 
         return Task.Run(
-            () => Rename(path.Trim(), newName.Trim(), cancellationToken),
+            () => RenameWithResult(path.Trim(), newName.Trim(), cancellationToken),
             cancellationToken);
     }
 
@@ -155,6 +181,18 @@ public sealed class FileSystemBrowserService : IFileBrowserService
 
         return Task.Run(
             () => Delete(paths, deleteBehavior, cancellationToken),
+            cancellationToken);
+    }
+
+    public Task<FileOperationResult> DeleteWithResultAsync(
+        IReadOnlyList<string> paths,
+        FileDeleteBehavior deleteBehavior,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+
+        return Task.Run(
+            () => DeleteWithResult(paths, deleteBehavior, cancellationToken),
             cancellationToken);
     }
 
@@ -349,6 +387,32 @@ public sealed class FileSystemBrowserService : IFileBrowserService
         return directoryPath;
     }
 
+    private FileOperationResult CreateDirectoryWithResult(
+        string parentDirectoryPath,
+        string preferredName,
+        CancellationToken cancellationToken)
+    {
+        var directoryPath = CreateDirectory(
+            parentDirectoryPath,
+            preferredName,
+            cancellationToken);
+
+        return new FileOperationResult
+        {
+            Operation = FileOperationKind.Create,
+            Paths = [directoryPath],
+            Entries =
+            [
+                new FileOperationEntry
+                {
+                    Kind = FileOperationEntryKind.Created,
+                    DestinationPath = directoryPath,
+                    IsDirectory = true,
+                },
+            ],
+        };
+    }
+
     private string Rename(
         string path,
         string newName,
@@ -382,6 +446,36 @@ public sealed class FileSystemBrowserService : IFileBrowserService
         throw new FileNotFoundException($"File or directory not found: {sourcePath}", sourcePath);
     }
 
+    private FileOperationResult RenameWithResult(
+        string path,
+        string newName,
+        CancellationToken cancellationToken)
+    {
+        var sourcePath = NormalizePath(path);
+        var isDirectory = Directory.Exists(sourcePath);
+        var destinationPath = Rename(path, newName, cancellationToken);
+
+        IReadOnlyList<FileOperationEntry> entries = IsSamePath(sourcePath, destinationPath)
+            ? []
+            :
+            [
+                new FileOperationEntry
+                {
+                    Kind = FileOperationEntryKind.Renamed,
+                    SourcePath = sourcePath,
+                    DestinationPath = destinationPath,
+                    IsDirectory = isDirectory,
+                },
+            ];
+
+        return new FileOperationResult
+        {
+            Operation = FileOperationKind.Rename,
+            Paths = [destinationPath],
+            Entries = entries,
+        };
+    }
+
     private void Delete(
         IReadOnlyList<string> paths,
         FileDeleteBehavior deleteBehavior,
@@ -392,6 +486,41 @@ public sealed class FileSystemBrowserService : IFileBrowserService
             cancellationToken.ThrowIfCancellationRequested();
             DeletePath(path, deleteBehavior);
         }
+    }
+
+    private FileOperationResult DeleteWithResult(
+        IReadOnlyList<string> paths,
+        FileDeleteBehavior deleteBehavior,
+        CancellationToken cancellationToken)
+    {
+        var deletedPaths = new List<string>(paths.Count);
+        var entries = new List<FileOperationEntry>(paths.Count);
+
+        foreach (var path in paths)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var normalizedPath = GetExistingPath(path);
+            var isDirectory = Directory.Exists(normalizedPath);
+            var backupPath = BackupPath(normalizedPath, cancellationToken);
+
+            DeletePath(normalizedPath, deleteBehavior);
+            deletedPaths.Add(normalizedPath);
+            entries.Add(new FileOperationEntry
+            {
+                Kind = FileOperationEntryKind.Deleted,
+                SourcePath = normalizedPath,
+                BackupPath = backupPath,
+                IsDirectory = isDirectory,
+            });
+        }
+
+        return new FileOperationResult
+        {
+            Operation = FileOperationKind.Delete,
+            Paths = deletedPaths,
+            Entries = entries,
+        };
     }
 
     private static void UndoFileOperation(
@@ -407,6 +536,15 @@ public sealed class FileSystemBrowserService : IFileBrowserService
 
             switch (entry.Kind)
             {
+                case FileOperationEntryKind.Created:
+                    DeleteExistingPath(entry.DestinationPath);
+                    break;
+                case FileOperationEntryKind.Renamed:
+                    MovePathSimple(entry.DestinationPath, entry.SourcePath);
+                    break;
+                case FileOperationEntryKind.Deleted:
+                    RestoreBackupPath(entry.BackupPath, entry.SourcePath, cancellationToken);
+                    break;
                 case FileOperationEntryKind.Copied:
                     DeleteExistingPath(entry.DestinationPath);
                     break;
@@ -445,6 +583,15 @@ public sealed class FileSystemBrowserService : IFileBrowserService
 
             switch (entry.Kind)
             {
+                case FileOperationEntryKind.Created:
+                    RecreateCreatedPath(entry);
+                    break;
+                case FileOperationEntryKind.Renamed:
+                    MovePathSimple(entry.SourcePath, entry.DestinationPath);
+                    break;
+                case FileOperationEntryKind.Deleted:
+                    DeleteExistingPath(entry.SourcePath);
+                    break;
                 case FileOperationEntryKind.Copied:
                     CopyPathForBackup(entry.SourcePath, entry.DestinationPath, cancellationToken);
                     break;
@@ -1196,6 +1343,46 @@ public sealed class FileSystemBrowserService : IFileBrowserService
         {
             File.Delete(path);
         }
+    }
+
+    private static void RestoreBackupPath(
+        string backupPath,
+        string destinationPath,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(backupPath) || !PathExists(backupPath))
+        {
+            throw new FileNotFoundException($"Backup path not found: {backupPath}", backupPath);
+        }
+
+        if (PathExists(destinationPath))
+        {
+            throw new IOException($"Destination already exists: {destinationPath}");
+        }
+
+        CopyPathForBackup(backupPath, destinationPath, cancellationToken);
+    }
+
+    private static void RecreateCreatedPath(FileOperationEntry entry)
+    {
+        if (string.IsNullOrWhiteSpace(entry.DestinationPath))
+        {
+            return;
+        }
+
+        if (PathExists(entry.DestinationPath))
+        {
+            throw new IOException($"Destination already exists: {entry.DestinationPath}");
+        }
+
+        EnsureParentDirectory(entry.DestinationPath);
+        if (entry.IsDirectory)
+        {
+            Directory.CreateDirectory(entry.DestinationPath);
+            return;
+        }
+
+        using var _ = File.Create(entry.DestinationPath);
     }
 
     private static void MovePathSimple(

@@ -29,12 +29,27 @@ public interface IFileBrowserService
         string preferredName,
         CancellationToken cancellationToken = default);
 
+    Task<FileOperationResult> CreateDirectoryWithResultAsync(
+        string parentDirectoryPath,
+        string preferredName,
+        CancellationToken cancellationToken = default);
+
     Task<string> RenameAsync(
         string path,
         string newName,
         CancellationToken cancellationToken = default);
 
+    Task<FileOperationResult> RenameWithResultAsync(
+        string path,
+        string newName,
+        CancellationToken cancellationToken = default);
+
     Task DeleteAsync(
+        IReadOnlyList<string> paths,
+        FileDeleteBehavior deleteBehavior,
+        CancellationToken cancellationToken = default);
+
+    Task<FileOperationResult> DeleteWithResultAsync(
         IReadOnlyList<string> paths,
         FileDeleteBehavior deleteBehavior,
         CancellationToken cancellationToken = default);

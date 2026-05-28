@@ -469,7 +469,7 @@ public sealed class FileExplorerViewModel : ObservableObject
             cancellationToken);
     }
 
-    public async Task RenameFileAsync(
+    public async Task<FileOperationResult?> RenameFileAsync(
         FileExplorerItemViewModel file,
         string newName,
         CancellationToken cancellationToken = default)
@@ -477,14 +477,16 @@ public sealed class FileExplorerViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(file);
         ArgumentException.ThrowIfNullOrWhiteSpace(newName);
 
-        var renamedPath = await _fileBrowserService.RenameAsync(
+        var result = await _fileBrowserService.RenameWithResultAsync(
             file.Path,
             newName,
             cancellationToken);
-        await RefreshAndSelectAsync([renamedPath], cancellationToken);
+        await RefreshAndSelectAsync(result.Paths, cancellationToken);
+
+        return result;
     }
 
-    public async Task<FileExplorerItemViewModel?> CreateFolderAsync(
+    public async Task<FileOperationResult?> CreateFolderAsync(
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(CurrentPath))
@@ -494,16 +496,16 @@ public sealed class FileExplorerViewModel : ObservableObject
 
         ClearSearchQuery();
 
-        var createdPath = await _fileBrowserService.CreateDirectoryAsync(
+        var result = await _fileBrowserService.CreateDirectoryWithResultAsync(
             CurrentPath,
             DefaultNewFolderName,
             cancellationToken);
-        await RefreshAndSelectAsync([createdPath], cancellationToken);
+        await RefreshAndSelectAsync(result.Paths, cancellationToken);
 
-        return SelectedFile;
+        return result;
     }
 
-    public async Task DeleteFilesAsync(
+    public async Task<FileOperationResult?> DeleteFilesAsync(
         IReadOnlyList<FileExplorerItemViewModel> files,
         FileDeleteBehavior deleteBehavior,
         CancellationToken cancellationToken = default)
@@ -512,7 +514,7 @@ public sealed class FileExplorerViewModel : ObservableObject
 
         if (files.Count == 0)
         {
-            return;
+            return null;
         }
 
         var nextSelectionIndex = files
@@ -522,13 +524,18 @@ public sealed class FileExplorerViewModel : ObservableObject
             .Min();
         var paths = files.Select(file => file.Path).ToList();
 
-        await _fileBrowserService.DeleteAsync(paths, deleteBehavior, cancellationToken);
+        var result = await _fileBrowserService.DeleteWithResultAsync(
+            paths,
+            deleteBehavior,
+            cancellationToken);
         await LoadCurrentDirectoryAsync(cancellationToken);
 
         if (Files.Count > 0)
         {
             SelectFile(Files[Math.Clamp(nextSelectionIndex, 0, Files.Count - 1)]);
         }
+
+        return result;
     }
 
     public async Task<FileOperationResult?> CopyFilesIntoCurrentDirectoryAsync(
