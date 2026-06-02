@@ -8,20 +8,19 @@
   IgnorableNamespaces="uap rescap">
 
   <Identity
-    Name="380D0F37-2C92-40AA-9512-80E5B7CC512F"
-    Publisher="CN=Lumina"
+    Name="FelixChristian.LuminaTagExplorer"
+    Publisher="CN=B40214F1-03C3-4DEC-ADB5-B45B9AA3F2FD"
     Version="1.0.0.0" />
 
-  <mp:PhoneIdentity PhoneProductId="380D0F37-2C92-40AA-9512-80E5B7CC512F" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
+  <mp:PhoneIdentity PhoneProductId="69b59fde-569f-4fd5-816a-c347c6daaf9e" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
   <Properties>
-    <DisplayName>Lumina</DisplayName>
-    <PublisherDisplayName>Lumina</PublisherDisplayName>
+    <DisplayName>Lumina Tag Explorer</DisplayName>
+    <PublisherDisplayName>Felix Christian</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
 
   <Dependencies>
-    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26226.0" />
     <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26226.0" />
   </Dependencies>
 
@@ -34,7 +33,7 @@
       Executable="$targetnametoken$.exe"
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="Lumina"
+        DisplayName="Lumina Tag Explorer"
         Description="Native WinUI file tagging workspace"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"

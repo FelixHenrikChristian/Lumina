@@ -9,3 +9,5 @@ artifacts/
 *.nupkg
 *.snupkg
 .demo-file-ops/
+src/Lumina.App/AppPackages/
+src/Lumina.App/BundleArtifacts/
