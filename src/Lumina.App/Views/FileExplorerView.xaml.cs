@@ -1524,14 +1524,6 @@ public sealed partial class FileExplorerView : UserControl
             return;
         }
 
-        if (!ViewModel.ContainsPathsInCurrentLocation(clipboard.Paths))
-        {
-            await ShowFileOperationErrorDialogAsync(
-                "Paste failed",
-                "Only files inside the current location can be copied or moved.");
-            return;
-        }
-
         var operationKind = clipboard.Operation == FileClipboardOperation.Cut
             ? FileOperationKind.Move
             : FileOperationKind.Copy;
@@ -2154,12 +2146,11 @@ public sealed partial class FileExplorerView : UserControl
             return;
         }
 
-        if (!ViewModel.ContainsPathInCurrentLocation(destinationDirectoryPath) ||
-            !ViewModel.ContainsPathsInCurrentLocation(paths))
+        if (!ViewModel.ContainsPathInCurrentLocation(destinationDirectoryPath))
         {
             await ShowFileOperationErrorDialogAsync(
                 errorTitle,
-                "Only files inside the current location can be copied or moved.");
+                "Files can only be copied or moved into the current location.");
             return;
         }
 
@@ -2318,7 +2309,6 @@ public sealed partial class FileExplorerView : UserControl
         if (acceptedOperation != DataPackageOperation.None &&
             _draggedPaths is not null &&
             (!ViewModel.ContainsPathInCurrentLocation(destinationDirectoryPath) ||
-                !ViewModel.ContainsPathsInCurrentLocation(_draggedPaths) ||
                 !CanDropPathsIntoDirectory(_draggedPaths, destinationDirectoryPath)))
         {
             acceptedOperation = DataPackageOperation.None;

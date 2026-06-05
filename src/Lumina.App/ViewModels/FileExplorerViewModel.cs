@@ -413,13 +413,6 @@ public sealed class FileExplorerViewModel : ObservableObject
         return _currentLocationScope?.ContainsPath(path) == true;
     }
 
-    public bool ContainsPathsInCurrentLocation(IReadOnlyList<string> paths)
-    {
-        ArgumentNullException.ThrowIfNull(paths);
-
-        return paths.Count > 0 && paths.All(ContainsPathInCurrentLocation);
-    }
-
     public async Task OpenDirectoryAsync(
         string directoryPath,
         CancellationToken cancellationToken = default)
@@ -797,7 +790,7 @@ public sealed class FileExplorerViewModel : ObservableObject
             return null;
         }
 
-        var normalizedSourcePaths = NormalizeContainedPaths(sourcePaths);
+        var normalizedSourcePaths = NormalizeFileSystemPaths(sourcePaths);
         var normalizedDestinationPath = NormalizeContainedPath(destinationDirectoryPath);
         var result = await _fileBrowserService.CopyWithResultAsync(
             normalizedSourcePaths,
@@ -873,7 +866,7 @@ public sealed class FileExplorerViewModel : ObservableObject
             return null;
         }
 
-        var normalizedSourcePaths = NormalizeContainedPaths(sourcePaths);
+        var normalizedSourcePaths = NormalizeFileSystemPaths(sourcePaths);
         var normalizedDestinationPath = NormalizeContainedPath(destinationDirectoryPath);
         var result = await _fileBrowserService.MoveWithResultAsync(
             normalizedSourcePaths,
@@ -895,7 +888,6 @@ public sealed class FileExplorerViewModel : ObservableObject
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(operationResult);
-        EnsureOperationResultPathsAreContained(operationResult);
 
         await _fileBrowserService.UndoFileOperationAsync(
             operationResult,
@@ -910,7 +902,6 @@ public sealed class FileExplorerViewModel : ObservableObject
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(operationResult);
-        EnsureOperationResultPathsAreContained(operationResult);
 
         await _fileBrowserService.RedoFileOperationAsync(
             operationResult,
@@ -1250,9 +1241,9 @@ public sealed class FileExplorerViewModel : ObservableObject
             ?? throw new InvalidOperationException("No location is selected.");
     }
 
-    private IReadOnlyList<string> NormalizeContainedPaths(IReadOnlyList<string> paths)
+    private static IReadOnlyList<string> NormalizeFileSystemPaths(IReadOnlyList<string> paths)
     {
-        return paths.Select(NormalizeContainedPath).ToList();
+        return paths.Select(NormalizeDirectoryPath).ToList();
     }
 
     private bool HasContainedPath(List<string> paths)
@@ -1283,23 +1274,6 @@ public sealed class FileExplorerViewModel : ObservableObject
         parentPath = string.Empty;
 
         return _currentLocationScope?.TryGetParentPath(CurrentPath, out parentPath) == true;
-    }
-
-    private void EnsureOperationResultPathsAreContained(FileOperationResult operationResult)
-    {
-        foreach (var entry in operationResult.Entries)
-        {
-            EnsureOperationPathIsContained(entry.SourcePath);
-            EnsureOperationPathIsContained(entry.DestinationPath);
-        }
-    }
-
-    private void EnsureOperationPathIsContained(string path)
-    {
-        if (!string.IsNullOrWhiteSpace(path))
-        {
-            NormalizeContainedPath(path);
-        }
     }
 
     private static string NormalizeDirectoryPath(string directoryPath)
