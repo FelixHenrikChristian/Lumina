@@ -3,6 +3,7 @@ using System.Collections.Specialized;
 
 using Microsoft.UI.Xaml;
 
+using Lumina.App.Services;
 using Lumina.Core.Models;
 using Lumina.Core.Services;
 
@@ -82,6 +83,8 @@ public sealed class LocationSidebarViewModel : ObservableObject
     public Visibility LocationListVisibility =>
         !IsBusy && HasLocations ? Visibility.Visible : Visibility.Collapsed;
 
+    private static string F(string key, params object?[] args) => LocalizationService.Format(key, args);
+
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
         IsBusy = true;
@@ -102,7 +105,7 @@ public sealed class LocationSidebarViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to load locations: {ex.Message}";
+            ErrorMessage = F("FailedLoadLocations", ex.Message);
         }
         finally
         {
@@ -136,7 +139,7 @@ public sealed class LocationSidebarViewModel : ObservableObject
         {
             Locations.Remove(location);
             SelectedLocation = Locations.FirstOrDefault();
-            ErrorMessage = $"Failed to save location: {ex.Message}";
+            ErrorMessage = F("FailedSaveLocation", ex.Message);
             return;
         }
 
@@ -197,7 +200,7 @@ public sealed class LocationSidebarViewModel : ObservableObject
                 SelectedLocation = originalLocation;
             }
 
-            ErrorMessage = $"Failed to save location: {ex.Message}";
+            ErrorMessage = F("FailedSaveLocation", ex.Message);
         }
     }
 
@@ -234,7 +237,7 @@ public sealed class LocationSidebarViewModel : ObservableObject
         {
             Locations.Insert(index, removedLocation);
             SelectedLocation = originalSelection;
-            ErrorMessage = $"Failed to delete location: {ex.Message}";
+            ErrorMessage = F("FailedDeleteLocation", ex.Message);
             return;
         }
 
@@ -268,7 +271,7 @@ public sealed class LocationSidebarViewModel : ObservableObject
             }
 
             SelectedLocation = originalSelection;
-            ErrorMessage = $"Failed to clear locations: {ex.Message}";
+            ErrorMessage = F("FailedClearLocations", ex.Message);
             return;
         }
 
@@ -337,7 +340,7 @@ public sealed class LocationSidebarViewModel : ObservableObject
         catch (Exception ex)
         {
             _appState = previousAppState;
-            ErrorMessage = $"Failed to save selected location: {ex.Message}";
+            ErrorMessage = F("FailedSaveSelectedLocation", ex.Message);
         }
     }
 

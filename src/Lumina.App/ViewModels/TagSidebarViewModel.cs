@@ -70,6 +70,10 @@ public sealed class TagSidebarViewModel : ObservableObject
     public Visibility TagGroupListVisibility =>
         !IsBusy && HasTagGroups ? Visibility.Visible : Visibility.Collapsed;
 
+    private static string S(string key) => LocalizationService.Get(key);
+
+    private static string F(string key, params object?[] args) => LocalizationService.Format(key, args);
+
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
         IsBusy = true;
@@ -83,7 +87,7 @@ public sealed class TagSidebarViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to load tags: {ex.Message}";
+            ErrorMessage = F("FailedLoadTags", ex.Message);
         }
         finally
         {
@@ -121,7 +125,7 @@ public sealed class TagSidebarViewModel : ObservableObject
 
         await MutateAndSaveAsync(
             groups => groups.Add(group),
-            "Failed to save tag group",
+            S("FailedSaveTagGroup"),
             cancellationToken);
     }
 
@@ -152,7 +156,7 @@ public sealed class TagSidebarViewModel : ObservableObject
                     DefaultTextColor = NormalizeColor(defaultTextColor, "#ffffff"),
                 };
             },
-            "Failed to save tag group",
+            S("FailedSaveTagGroup"),
             cancellationToken);
     }
 
@@ -168,7 +172,7 @@ public sealed class TagSidebarViewModel : ObservableObject
 
         await MutateAndSaveAsync(
             groups => groups.RemoveAt(index),
-            "Failed to delete tag group",
+            S("FailedDeleteTagGroup"),
             cancellationToken);
     }
 
@@ -205,7 +209,7 @@ public sealed class TagSidebarViewModel : ObservableObject
                     Tags = original.Tags.Concat([tag]).ToList(),
                 };
             },
-            "Failed to save tag",
+            S("FailedSaveTag"),
             cancellationToken);
     }
 
@@ -264,7 +268,7 @@ public sealed class TagSidebarViewModel : ObservableObject
                     }
                 }
             },
-            "Failed to save tag",
+            S("FailedSaveTag"),
             cancellationToken);
     }
 
@@ -296,7 +300,7 @@ public sealed class TagSidebarViewModel : ObservableObject
                     Tags = reorderedTags,
                 };
             },
-            "Failed to reorder tags",
+            S("FailedReorderTags"),
             cancellationToken);
     }
 
@@ -325,7 +329,7 @@ public sealed class TagSidebarViewModel : ObservableObject
                     Tags = group.Tags.Where(tag => tag.Id != tagId).ToList(),
                 };
             },
-            "Failed to delete tag",
+            S("FailedDeleteTag"),
             cancellationToken);
     }
 
@@ -338,7 +342,7 @@ public sealed class TagSidebarViewModel : ObservableObject
 
         await MutateAndSaveAsync(
             groups => groups.Clear(),
-            "Failed to clear tags",
+            S("FailedClearTags"),
             cancellationToken);
     }
 
@@ -413,7 +417,7 @@ public sealed class TagSidebarViewModel : ObservableObject
         return group with
         {
             Id = groupId,
-            Name = NormalizeRequiredName(group.Name, "Untitled group"),
+            Name = NormalizeRequiredName(group.Name, S("UntitledGroup")),
             DefaultColor = NormalizeColor(group.DefaultColor, "#2196f3"),
             DefaultTextColor = NormalizeColor(group.DefaultTextColor, "#ffffff"),
             Description = NormalizeOptionalText(group.Description),
@@ -426,7 +430,7 @@ public sealed class TagSidebarViewModel : ObservableObject
         return tag with
         {
             Id = string.IsNullOrWhiteSpace(tag.Id) ? Guid.NewGuid().ToString("N") : tag.Id.Trim(),
-            Name = NormalizeRequiredName(tag.Name, "Untitled tag"),
+            Name = NormalizeRequiredName(tag.Name, S("UntitledTag")),
             Color = NormalizeColor(tag.Color, "#2196f3"),
             TextColor = NormalizeColor(tag.TextColor, "#ffffff"),
             GroupId = groupId,

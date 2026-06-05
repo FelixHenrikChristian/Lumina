@@ -39,6 +39,19 @@ public sealed class JsonSettingsStoreTests
         Assert.Equal(@"D:\Media", location.Path);
     }
 
+    [Fact]
+    public async Task DisplaySettingsStore_NormalizesAndRoundTripsLanguage()
+    {
+        var settingsStore = new JsonSettingsStore(CreateTemporaryDirectory());
+        var displaySettingsStore = new JsonDisplaySettingsStore(settingsStore);
+
+        await displaySettingsStore.SaveAsync(new DisplaySettings { Language = "zh-CN", GridSize = 8 });
+        var loaded = await displaySettingsStore.LoadAsync();
+
+        Assert.Equal(DisplayLanguage.SimplifiedChinese, loaded.Language);
+        Assert.Equal(8, loaded.GridSize);
+    }
+
     private static string CreateTemporaryDirectory()
     {
         var path = Path.Combine(Path.GetTempPath(), "Lumina.Tests", Guid.NewGuid().ToString("N"));

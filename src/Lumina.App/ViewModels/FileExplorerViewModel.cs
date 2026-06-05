@@ -15,7 +15,7 @@ public sealed class FileExplorerViewModel : ObservableObject
     private static readonly double[] CardWidthZoomLevels = [176, 208, 240, 280, 320, 368];
     private const double InfoPanelHeight = 48;
     private const int DefaultZoomLevelIndex = 2;
-    private const string DefaultNewFolderName = "New folder";
+    private static string DefaultNewFolderName => S("NewFolder");
 
     private readonly IFileBrowserService _fileBrowserService;
     private readonly IFileThumbnailService _fileThumbnailService;
@@ -118,15 +118,15 @@ public sealed class FileExplorerViewModel : ObservableObject
     }
 
     public string BreadcrumbText => string.IsNullOrWhiteSpace(CurrentPath)
-        ? "No location selected"
+        ? S("NoLocationSelected")
         : _currentLocationScope?.GetDisplayPath(CurrentPath, CurrentLocationName) ?? CurrentPath;
 
     public IReadOnlyList<FileExplorerBreadcrumbItemViewModel> BreadcrumbItems =>
         BuildBreadcrumbItems(_currentLocationScope, CurrentLocationName, CurrentPath);
 
     public string SearchPlaceholderText => string.IsNullOrWhiteSpace(CurrentPath)
-        ? "Search"
-        : $"Search in {GetCurrentFolderName(CurrentPath)}";
+        ? S("Search")
+        : F("SearchInFolder", GetCurrentFolderName(CurrentPath));
 
     public string? ErrorMessage
     {
@@ -180,7 +180,7 @@ public sealed class FileExplorerViewModel : ObservableObject
 
     public bool HasActiveTagFilters => _selectedTagFilterIds.Count > 0;
 
-    public string TagFilterButtonText => "Tags";
+    public string TagFilterButtonText => S("Tags");
 
     public Visibility BusyVisibility => IsBusy ? Visibility.Visible : Visibility.Collapsed;
 
@@ -206,6 +206,10 @@ public sealed class FileExplorerViewModel : ObservableObject
 
     public Visibility TagFilterEmptyVisibility =>
         HasTagFilterGroups ? Visibility.Collapsed : Visibility.Visible;
+
+    private static string S(string key) => LocalizationService.Get(key);
+
+    private static string F(string key, params object?[] args) => LocalizationService.Format(key, args);
 
     public string SearchQuery
     {
@@ -243,7 +247,7 @@ public sealed class FileExplorerViewModel : ObservableObject
             _forwardStack.Clear();
             ClearSelection();
             Files.Clear();
-            ErrorMessage = $"Failed to open location: {ex.Message}";
+            ErrorMessage = F("FailedOpenLocation", ex.Message);
             OnComputedStateChanged();
             return;
         }
@@ -459,6 +463,19 @@ public sealed class FileExplorerViewModel : ObservableObject
         foreach (var file in Files)
         {
             file.ApplyTagStyles(_tagStyles);
+        }
+    }
+
+    public void RefreshLocalizedText()
+    {
+        OnPropertyChanged(nameof(BreadcrumbText));
+        OnPropertyChanged(nameof(BreadcrumbItems));
+        OnPropertyChanged(nameof(SearchPlaceholderText));
+        OnPropertyChanged(nameof(TagFilterButtonText));
+
+        foreach (var file in Files)
+        {
+            file.RefreshLocalizedText();
         }
     }
 
@@ -977,7 +994,7 @@ public sealed class FileExplorerViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to load folder: {ex.Message}";
+            ErrorMessage = F("FailedLoadFolder", ex.Message);
         }
         finally
         {
@@ -1288,7 +1305,7 @@ public sealed class FileExplorerViewModel : ObservableObject
     {
         if (locationScope is null || string.IsNullOrWhiteSpace(directoryPath))
         {
-            return [new FileExplorerBreadcrumbItemViewModel("No location selected", string.Empty)];
+            return [new FileExplorerBreadcrumbItemViewModel(S("NoLocationSelected"), string.Empty)];
         }
 
         return locationScope
@@ -1302,7 +1319,7 @@ public sealed class FileExplorerViewModel : ObservableObject
         var normalizedPath = NormalizeDirectoryPath(directoryPath);
         var folderName = Path.GetFileName(Path.TrimEndingDirectorySeparator(normalizedPath));
 
-        return string.IsNullOrWhiteSpace(folderName) ? "current folder" : folderName;
+        return string.IsNullOrWhiteSpace(folderName) ? S("CurrentFolder") : folderName;
     }
 
     private static bool IsSameDirectory(string left, string right)
@@ -1624,7 +1641,7 @@ public sealed class FileExplorerItemViewModel : ObservableObject
 
     public string RelativePathToolTip => string.IsNullOrWhiteSpace(RelativePath)
         ? string.Empty
-        : $"Open containing folder: {RelativePath}";
+        : LocalizationService.Format("OpenContainingFolder", RelativePath);
 
     public bool IsDirectory => File.IsDirectory;
 
@@ -1649,7 +1666,7 @@ public sealed class FileExplorerItemViewModel : ObservableObject
         : ResolveFileGlyph(File);
 
     public string DetailText => IsDirectory
-        ? "Folder"
+        ? LocalizationService.Get("Folder")
         : FormatSize(File.Size);
 
     public string SizeText => IsDirectory
@@ -1659,6 +1676,14 @@ public sealed class FileExplorerItemViewModel : ObservableObject
     public string ModifiedText => File.Modified.ToLocalTime().ToString(
         "yyyy-MM-dd HH:mm",
         CultureInfo.CurrentCulture);
+
+    public void RefreshLocalizedText()
+    {
+        OnPropertyChanged(nameof(RelativePathToolTip));
+        OnPropertyChanged(nameof(DetailText));
+        OnPropertyChanged(nameof(SizeText));
+        OnPropertyChanged(nameof(ModifiedText));
+    }
 
     public void UpdateCardLayout(
         double cardWidth,

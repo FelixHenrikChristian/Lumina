@@ -5,6 +5,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:services="using:Lumina.App.Services"
+    Loaded="Page_Loaded"
     mc:Ignorable="d">
 
     <Grid Padding="16" RowSpacing="12">
@@ -16,15 +18,33 @@
         <TextBlock
             FontSize="20"
             FontWeight="SemiBold"
-            Text="Settings" />
+            services:Localization.TextKey="Settings" />
 
         <StackPanel Grid.Row="1" Spacing="8">
+            <ComboBox
+                x:Name="LanguageComboBox"
+                HorizontalAlignment="Stretch"
+                SelectionChanged="LanguageComboBox_SelectionChanged"
+                services:Localization.HeaderKey="Language">
+                <ComboBoxItem
+                    x:Name="SystemLanguageItem"
+                    Tag="system"
+                    services:Localization.ContentKey="LanguageSystem" />
+                <ComboBoxItem
+                    x:Name="EnglishLanguageItem"
+                    Tag="en-US"
+                    services:Localization.ContentKey="LanguageEnglish" />
+                <ComboBoxItem
+                    x:Name="SimplifiedChineseLanguageItem"
+                    Tag="zh-Hans"
+                    services:Localization.ContentKey="LanguageSimplifiedChinese" />
+            </ComboBox>
             <ToggleSwitch
-                Header="Follow system theme"
+                services:Localization.HeaderKey="FollowSystemTheme"
                 IsEnabled="False"
                 IsOn="True" />
             <ToggleSwitch
-                Header="Simplified/traditional Chinese search"
+                services:Localization.HeaderKey="SimplifiedChineseSearch"
                 IsEnabled="False" />
         </StackPanel>
     </Grid>

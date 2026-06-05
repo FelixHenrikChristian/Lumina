@@ -1,5 +1,7 @@
 using Microsoft.UI.Xaml;
 
+using Lumina.App.Services;
+
 namespace Lumina.App;
 
 public partial class App : Application
@@ -8,6 +10,7 @@ public partial class App : Application
 
     public App()
     {
+        LocalizationService.InitializeFromSettings();
         InitializeComponent();
     }
 

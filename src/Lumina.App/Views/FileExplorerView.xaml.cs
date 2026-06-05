@@ -76,7 +76,7 @@ public sealed partial class FileExplorerView : UserControl
 
     private sealed class FileOperationProgressDialogState : ObservableObject
     {
-        private string _statusText = "Preparing...";
+        private string _statusText = LocalizationService.Get("Preparing");
         private string _currentItemText = string.Empty;
         private string _detailText = string.Empty;
         private double _progressValue;
@@ -120,9 +120,15 @@ public sealed partial class FileExplorerView : UserControl
 
             StatusText = progress.Stage switch
             {
-                FileOperationProgressStage.Preparing => $"Preparing to {FormatOperationVerb(progress.Operation)}...",
-                FileOperationProgressStage.Completed => $"{FormatOperationName(progress.Operation)} complete",
-                _ => $"{FormatOperationGerund(progress.Operation)}...",
+                FileOperationProgressStage.Preparing => LocalizationService.Format(
+                    "PreparingToOperation",
+                    FormatOperationVerb(progress.Operation)),
+                FileOperationProgressStage.Completed => LocalizationService.Format(
+                    "OperationComplete",
+                    FormatOperationName(progress.Operation)),
+                _ => LocalizationService.Format(
+                    "OperationRunning",
+                    FormatOperationGerund(progress.Operation)),
             };
 
             CurrentItemText = string.IsNullOrWhiteSpace(progress.CurrentItemName)
@@ -134,13 +140,13 @@ public sealed partial class FileExplorerView : UserControl
 
         public void MarkCancelling()
         {
-            StatusText = "Cancelling...";
+            StatusText = LocalizationService.Get("Cancelling");
             IsIndeterminate = true;
         }
 
         public void MarkCancelled()
         {
-            StatusText = "Cancelled";
+            StatusText = LocalizationService.Get("Cancelled");
             IsIndeterminate = false;
         }
 
@@ -148,12 +154,18 @@ public sealed partial class FileExplorerView : UserControl
         {
             if (progress.TotalBytes > 0)
             {
-                return $"{FormatCompactByteCount(progress.CompletedBytes)} of {FormatCompactByteCount(progress.TotalBytes)}";
+                return LocalizationService.Format(
+                    "OperationProgressDetailBytes",
+                    FormatCompactByteCount(progress.CompletedBytes),
+                    FormatCompactByteCount(progress.TotalBytes));
             }
 
             if (progress.TotalItems > 0)
             {
-                return $"{Math.Min(progress.CompletedItems, progress.TotalItems)} of {progress.TotalItems} items";
+                return LocalizationService.Format(
+                    "OperationProgressDetailItems",
+                    Math.Min(progress.CompletedItems, progress.TotalItems),
+                    progress.TotalItems);
             }
 
             return string.Empty;
@@ -163,11 +175,11 @@ public sealed partial class FileExplorerView : UserControl
         {
             return operation switch
             {
-                FileOperationKind.Create => "create",
-                FileOperationKind.Rename => "rename",
-                FileOperationKind.Delete => "delete",
-                FileOperationKind.Move => "move",
-                _ => "copy",
+                FileOperationKind.Create => LocalizationService.Get("CreateOperationVerb"),
+                FileOperationKind.Rename => LocalizationService.Get("RenameOperationVerb"),
+                FileOperationKind.Delete => LocalizationService.Get("DeleteOperationVerb"),
+                FileOperationKind.Move => LocalizationService.Get("MoveOperationVerb"),
+                _ => LocalizationService.Get("CopyOperationVerb"),
             };
         }
 
@@ -175,11 +187,11 @@ public sealed partial class FileExplorerView : UserControl
         {
             return operation switch
             {
-                FileOperationKind.Create => "Create",
-                FileOperationKind.Rename => "Rename",
-                FileOperationKind.Delete => "Delete",
-                FileOperationKind.Move => "Move",
-                _ => "Copy",
+                FileOperationKind.Create => LocalizationService.Get("CreateOperation"),
+                FileOperationKind.Rename => LocalizationService.Get("RenameOperation"),
+                FileOperationKind.Delete => LocalizationService.Get("DeleteOperation"),
+                FileOperationKind.Move => LocalizationService.Get("MoveOperation"),
+                _ => LocalizationService.Get("CopyOperation"),
             };
         }
 
@@ -187,11 +199,11 @@ public sealed partial class FileExplorerView : UserControl
         {
             return operation switch
             {
-                FileOperationKind.Create => "Creating",
-                FileOperationKind.Rename => "Renaming",
-                FileOperationKind.Delete => "Deleting",
-                FileOperationKind.Move => "Moving",
-                _ => "Copying",
+                FileOperationKind.Create => LocalizationService.Get("CreateOperationGerund"),
+                FileOperationKind.Rename => LocalizationService.Get("RenameOperationGerund"),
+                FileOperationKind.Delete => LocalizationService.Get("DeleteOperationGerund"),
+                FileOperationKind.Move => LocalizationService.Get("MoveOperationGerund"),
+                _ => LocalizationService.Get("CopyOperationGerund"),
             };
         }
     }
@@ -249,12 +261,18 @@ public sealed partial class FileExplorerView : UserControl
 
     public FileExplorerViewModel ViewModel { get; }
 
+    private static string S(string key) => LocalizationService.Get(key);
+
+    private static string F(string key, params object?[] args) => LocalizationService.Format(key, args);
+
     private async void FileExplorerView_Loaded(object sender, RoutedEventArgs e)
     {
         LocationSelectionEvents.SelectionChanged -= LocationSelectionEvents_SelectionChanged;
         LocationSelectionEvents.SelectionChanged += LocationSelectionEvents_SelectionChanged;
         TagLibraryEvents.Changed -= TagLibraryEvents_Changed;
         TagLibraryEvents.Changed += TagLibraryEvents_Changed;
+        LocalizationService.LanguageChanged -= LocalizationService_LanguageChanged;
+        LocalizationService.LanguageChanged += LocalizationService_LanguageChanged;
         Clipboard.ContentChanged -= Clipboard_ContentChanged;
         Clipboard.ContentChanged += Clipboard_ContentChanged;
         AttachSearchTextBoxEvents();
@@ -268,6 +286,7 @@ public sealed partial class FileExplorerView : UserControl
     {
         LocationSelectionEvents.SelectionChanged -= LocationSelectionEvents_SelectionChanged;
         TagLibraryEvents.Changed -= TagLibraryEvents_Changed;
+        LocalizationService.LanguageChanged -= LocalizationService_LanguageChanged;
         Clipboard.ContentChanged -= Clipboard_ContentChanged;
         CancelPendingSearch();
         CancelInlineRename();
@@ -278,6 +297,11 @@ public sealed partial class FileExplorerView : UserControl
     private async void Clipboard_ContentChanged(object? sender, object e)
     {
         await RefreshClipboardVisualStateAsync();
+    }
+
+    private void LocalizationService_LanguageChanged(object? sender, EventArgs e)
+    {
+        ViewModel.RefreshLocalizedText();
     }
 
     private void Files_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -670,7 +694,7 @@ public sealed partial class FileExplorerView : UserControl
         args.Data.RequestedOperation = DataPackageOperation.Move;
         args.Data.Properties.Title = paths.Count == 1
             ? file.FileSystemName
-            : $"{paths.Count} items";
+            : F("ItemCountMultiple", paths.Count);
         args.Data.SetData(LuminaFilePathsFormat, SerializeFilePaths(paths));
 
         var deferral = args.GetDeferral();
@@ -712,7 +736,7 @@ public sealed partial class FileExplorerView : UserControl
         var flyout = new MenuFlyout();
         var deleteItem = new MenuFlyoutItem
         {
-            Text = "Delete tag",
+            Text = S("DeleteTag"),
             Tag = new FileTagMenuContext(file, tag.Name),
             Icon = new FontIcon
             {
@@ -1308,7 +1332,7 @@ public sealed partial class FileExplorerView : UserControl
                 EnsureSelectedFileVisible();
                 BeginInlineRename(folder);
             },
-            "New folder failed");
+            S("NewFolderFailed"));
         FileGridScrollViewer.Focus(FocusState.Programmatic);
     }
 
@@ -1413,8 +1437,8 @@ public sealed partial class FileExplorerView : UserControl
             if (newDisplayName.Length == 0)
             {
                 await ShowFileOperationErrorDialogAsync(
-                    "Rename failed",
-                    "The name cannot be empty.");
+                    S("RenameFailed"),
+                    S("NameCannotBeEmpty"));
                 FocusInlineRenameBox(file);
                 return;
             }
@@ -1445,7 +1469,7 @@ public sealed partial class FileExplorerView : UserControl
         }
         catch (Exception ex)
         {
-            await ShowFileOperationErrorDialogAsync("Rename failed", ex.Message);
+            await ShowFileOperationErrorDialogAsync(S("RenameFailed"), ex.Message);
             if (ReferenceEquals(_renamingFile, file))
             {
                 FocusInlineRenameBox(file);
@@ -1496,7 +1520,7 @@ public sealed partial class FileExplorerView : UserControl
                         ? FileDeleteBehavior.Permanent
                         : FileDeleteBehavior.RecycleBin);
             },
-            "Delete failed");
+            S("DeleteFailed"));
         RecordFileOperation(operationResult);
         FileGridScrollViewer.Focus(FocusState.Programmatic);
     }
@@ -1564,7 +1588,7 @@ public sealed partial class FileExplorerView : UserControl
 
         if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
         {
-            await ShowFileOperationErrorDialogAsync("Paste failed", result.ErrorMessage);
+            await ShowFileOperationErrorDialogAsync(S("PasteFailed"), result.ErrorMessage);
         }
 
         FileGridScrollViewer.Focus(FocusState.Programmatic);
@@ -1631,7 +1655,7 @@ public sealed partial class FileExplorerView : UserControl
         catch (Exception ex)
         {
             await ShowFileOperationErrorDialogAsync(
-                "Open in File Explorer failed",
+                S("OpenInFileExplorerFailed"),
                 ex.Message);
         }
     }
@@ -1644,9 +1668,9 @@ public sealed partial class FileExplorerView : UserControl
             var dialog = new ContentDialog
             {
                 XamlRoot = XamlRoot,
-                Title = $"{properties.Name} Properties",
+                Title = F("PropertiesTitle", properties.Name),
                 Content = CreateFilePropertiesContent(properties),
-                CloseButtonText = "OK",
+                CloseButtonText = S("OK"),
                 DefaultButton = ContentDialogButton.Close,
             };
 
@@ -1654,7 +1678,7 @@ public sealed partial class FileExplorerView : UserControl
         }
         catch (Exception ex)
         {
-            await ShowFileOperationErrorDialogAsync("Properties failed", ex.Message);
+            await ShowFileOperationErrorDialogAsync(S("PropertiesFailed"), ex.Message);
         }
     }
 
@@ -1755,9 +1779,9 @@ public sealed partial class FileExplorerView : UserControl
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = "Open file failed",
-            Content = $"Could not open \"{fileName}\".\n\n{message}",
-            CloseButtonText = "OK",
+            Title = S("OpenFileFailed"),
+            Content = F("CouldNotOpenFile", fileName, message),
+            CloseButtonText = S("OK"),
         };
 
         await dialog.ShowAsync();
@@ -1768,19 +1792,19 @@ public sealed partial class FileExplorerView : UserControl
     {
         var count = files.Count;
         var title = count == 1
-            ? "Permanently delete item?"
-            : $"Permanently delete {count} items?";
+            ? S("PermanentlyDeleteItemTitle")
+            : F("PermanentlyDeleteItemsTitle", count);
         var content = count == 1
-            ? $"\"{files[0].Name}\" will be deleted permanently."
-            : "The selected items will be deleted permanently.";
+            ? F("PermanentlyDeleteItemContent", files[0].Name)
+            : S("PermanentlyDeleteItemsContent");
 
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
             Title = title,
             Content = content,
-            PrimaryButtonText = "Delete",
-            CloseButtonText = "Cancel",
+            PrimaryButtonText = S("Delete"),
+            CloseButtonText = S("Cancel"),
             DefaultButton = ContentDialogButton.Close,
         };
 
@@ -1962,7 +1986,7 @@ public sealed partial class FileExplorerView : UserControl
         var isDirectoryMerge = conflict.SourceIsDirectory && conflict.DestinationIsDirectory;
         var applyToAllCheckBox = new CheckBox
         {
-            Content = "Do this for all current conflicts",
+            Content = S("ApplyToAllConflicts"),
         };
 
         var content = new StackPanel
@@ -1972,22 +1996,22 @@ public sealed partial class FileExplorerView : UserControl
         };
         content.Children.Add(new TextBlock
         {
-            Text = $"An item named \"{conflict.Name}\" already exists in the destination.",
+            Text = F("ConflictExists", conflict.Name),
             TextWrapping = TextWrapping.Wrap,
         });
         content.Children.Add(CreatePropertiesRows(
-            ("Source:", conflict.SourcePath),
-            ("Destination:", conflict.DestinationPath)));
+            (S("ConflictSourceLabel"), conflict.SourcePath),
+            (S("ConflictDestinationLabel"), conflict.DestinationPath)));
         content.Children.Add(applyToAllCheckBox);
 
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = isDirectoryMerge ? "Merge folder?" : "Replace or skip file?",
+            Title = isDirectoryMerge ? S("MergeFolderTitle") : S("ReplaceOrSkipFileTitle"),
             Content = content,
-            PrimaryButtonText = isDirectoryMerge ? "Merge" : "Replace",
-            SecondaryButtonText = "Keep both",
-            CloseButtonText = "Skip",
+            PrimaryButtonText = isDirectoryMerge ? S("Merge") : S("Replace"),
+            SecondaryButtonText = S("KeepBoth"),
+            CloseButtonText = S("Skip"),
             DefaultButton = ContentDialogButton.Secondary,
         };
 
@@ -2037,7 +2061,7 @@ public sealed partial class FileExplorerView : UserControl
                     cancellationToken);
                 return operationResult;
             },
-            $"Undoing {FormatItemCount(operationResult.Entries.Count)}");
+            F("UndoingItems", FormatItemCount(operationResult.Entries.Count)));
 
         if (result.Succeeded)
         {
@@ -2052,7 +2076,7 @@ public sealed partial class FileExplorerView : UserControl
 
         if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
         {
-            await ShowFileOperationErrorDialogAsync("Undo failed", result.ErrorMessage);
+            await ShowFileOperationErrorDialogAsync(S("UndoFailed"), result.ErrorMessage);
         }
     }
 
@@ -2075,7 +2099,7 @@ public sealed partial class FileExplorerView : UserControl
                     cancellationToken);
                 return operationResult;
             },
-            $"Redoing {FormatItemCount(operationResult.Entries.Count)}");
+            F("RedoingItems", FormatItemCount(operationResult.Entries.Count)));
 
         if (result.Succeeded)
         {
@@ -2090,7 +2114,7 @@ public sealed partial class FileExplorerView : UserControl
 
         if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
         {
-            await ShowFileOperationErrorDialogAsync("Redo failed", result.ErrorMessage);
+            await ShowFileOperationErrorDialogAsync(S("RedoFailed"), result.ErrorMessage);
         }
     }
 
@@ -2127,8 +2151,8 @@ public sealed partial class FileExplorerView : UserControl
         var deferral = e.GetDeferral();
         IReadOnlyList<string> paths;
         var errorTitle = operation == DataPackageOperation.Move
-            ? "Move failed"
-            : "Copy failed";
+            ? S("MoveFailed")
+            : S("CopyFailed");
         try
         {
             paths = await GetDroppedFilePathsAsync(e.DataView);
@@ -2150,7 +2174,7 @@ public sealed partial class FileExplorerView : UserControl
         {
             await ShowFileOperationErrorDialogAsync(
                 errorTitle,
-                "Files can only be copied or moved into the current location.");
+                S("DropOutsideCurrentLocation"));
             return;
         }
 
@@ -2211,8 +2235,8 @@ public sealed partial class FileExplorerView : UserControl
 
         e.AcceptedOperation = DataPackageOperation.Copy;
         e.DragUIOverride.Caption = FileContainsTag(file, tag.Name)
-            ? "Move tag"
-            : "Add tag";
+            ? S("MoveTag")
+            : S("AddTag");
         e.DragUIOverride.IsCaptionVisible = true;
 
         var insertionIndex = CalculateTagInsertionIndex(sender, e, file, tag.Name);
@@ -2267,7 +2291,7 @@ public sealed partial class FileExplorerView : UserControl
                     insertionIndex.Value);
                 RecordFileOperation(operationResult);
             },
-            "Add tag failed");
+            S("AddTagFailed"));
         FileGridScrollViewer.Focus(FocusState.Programmatic);
     }
 
@@ -2288,7 +2312,7 @@ public sealed partial class FileExplorerView : UserControl
                     tagName);
                 RecordFileOperation(operationResult);
             },
-            "Delete tag failed");
+            S("DeleteTagFailed"));
         FileGridScrollViewer.Focus(FocusState.Programmatic);
     }
 
@@ -2318,8 +2342,8 @@ public sealed partial class FileExplorerView : UserControl
         if (acceptedOperation != DataPackageOperation.None)
         {
             e.DragUIOverride.Caption = acceptedOperation == DataPackageOperation.Copy
-                ? "Copy here"
-                : "Move here";
+                ? S("CopyHere")
+                : S("MoveHere");
             e.DragUIOverride.IsCaptionVisible = true;
         }
 
@@ -2509,7 +2533,7 @@ public sealed partial class FileExplorerView : UserControl
             XamlRoot = XamlRoot,
             Title = title,
             Content = message,
-            CloseButtonText = "OK",
+            CloseButtonText = S("OK"),
         };
 
         await dialog.ShowAsync();
@@ -2578,7 +2602,7 @@ public sealed partial class FileExplorerView : UserControl
             XamlRoot = XamlRoot,
             Title = title,
             Content = root,
-            CloseButtonText = "Cancel",
+            CloseButtonText = S("Cancel"),
             DefaultButton = ContentDialogButton.Close,
         };
     }
@@ -2599,15 +2623,15 @@ public sealed partial class FileExplorerView : UserControl
         FileOperationKind operation,
         int itemCount)
     {
-        var itemText = itemCount == 1 ? "1 item" : $"{itemCount} items";
+        var itemText = FormatItemCount(itemCount);
 
         return operation switch
         {
-            FileOperationKind.Create => $"Creating {itemText}",
-            FileOperationKind.Rename => $"Renaming {itemText}",
-            FileOperationKind.Delete => $"Deleting {itemText}",
-            FileOperationKind.Move => $"Moving {itemText}",
-            _ => $"Copying {itemText}",
+            FileOperationKind.Create => F("FileOperationTitle", S("CreateOperationGerund"), itemText),
+            FileOperationKind.Rename => F("FileOperationTitle", S("RenameOperationGerund"), itemText),
+            FileOperationKind.Delete => F("FileOperationTitle", S("DeleteOperationGerund"), itemText),
+            FileOperationKind.Move => F("FileOperationTitle", S("MoveOperationGerund"), itemText),
+            _ => F("FileOperationTitle", S("CopyOperationGerund"), itemText),
         };
     }
 
@@ -2618,21 +2642,21 @@ public sealed partial class FileExplorerView : UserControl
             Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft,
         };
 
-        flyout.Items.Add(CreateSortFieldItem(FileSortField.Name, "Name"));
-        flyout.Items.Add(CreateSortFieldItem(FileSortField.Modified, "Date modified"));
-        flyout.Items.Add(CreateSortFieldItem(FileSortField.Type, "Type"));
+        flyout.Items.Add(CreateSortFieldItem(FileSortField.Name, S("Name")));
+        flyout.Items.Add(CreateSortFieldItem(FileSortField.Modified, S("DateModified")));
+        flyout.Items.Add(CreateSortFieldItem(FileSortField.Type, S("Type")));
 
         var moreItem = new MenuFlyoutSubItem
         {
-            Text = "More",
+            Text = S("More"),
         };
-        moreItem.Items.Add(CreateSortFieldItem(FileSortField.Size, "Size"));
-        moreItem.Items.Add(CreateSortFieldItem(FileSortField.Created, "Date created"));
+        moreItem.Items.Add(CreateSortFieldItem(FileSortField.Size, S("Size")));
+        moreItem.Items.Add(CreateSortFieldItem(FileSortField.Created, S("DateCreated")));
         flyout.Items.Add(moreItem);
 
         flyout.Items.Add(new MenuFlyoutSeparator());
-        flyout.Items.Add(CreateSortDirectionItem(FileSortDirection.Ascending, "Ascending"));
-        flyout.Items.Add(CreateSortDirectionItem(FileSortDirection.Descending, "Descending"));
+        flyout.Items.Add(CreateSortDirectionItem(FileSortDirection.Ascending, S("SortAscending")));
+        flyout.Items.Add(CreateSortDirectionItem(FileSortDirection.Descending, S("SortDescending")));
 
         return flyout;
     }
@@ -2645,24 +2669,24 @@ public sealed partial class FileExplorerView : UserControl
         };
 
         flyout.PrimaryCommands.Add(CreateContextCommandButton(
-            "Cut",
+            S("Cut"),
             "\uE8C6",
             CutButton_Click));
         flyout.PrimaryCommands.Add(CreateContextCommandButton(
-            "Copy",
+            S("Copy"),
             "\uE8C8",
             CopyButton_Click));
         flyout.PrimaryCommands.Add(CreateContextCommandButton(
-            "Rename",
+            S("Rename"),
             "\uE8AC",
             RenameButton_Click));
         flyout.PrimaryCommands.Add(CreateContextCommandButton(
-            "Delete",
+            S("Delete"),
             "\uE74D",
             DeleteButton_Click));
 
         var openButton = CreateContextCommandButton(
-            "Open",
+            S("Open"),
             "\uE8E5",
             OpenFileContextButton_Click);
         openButton.KeyboardAccelerators.Add(new KeyboardAccelerator
@@ -2672,12 +2696,12 @@ public sealed partial class FileExplorerView : UserControl
         flyout.SecondaryCommands.Add(openButton);
 
         flyout.SecondaryCommands.Add(CreateContextCommandButton(
-            "Show in File Explorer",
+            S("ShowInFileExplorer"),
             "\uE8A7",
             ShowInFileExplorerContextButton_Click));
 
         var propertiesButton = CreateContextCommandButton(
-            "Properties",
+            S("Properties"),
             "\uE946",
             PropertiesContextButton_Click);
         propertiesButton.KeyboardAccelerators.Add(new KeyboardAccelerator
@@ -2721,7 +2745,7 @@ public sealed partial class FileExplorerView : UserControl
             return new FilePropertiesDialogInfo(
                 directory.Name,
                 "\uE8B7",
-                "Folder",
+                S("Folder"),
                 directory.Parent?.FullName ?? directory.FullName,
                 totals.Size,
                 totals.SizeOnDisk,
@@ -2747,7 +2771,7 @@ public sealed partial class FileExplorerView : UserControl
         return new FilePropertiesDialogInfo(
             file.FileSystemName,
             file.IconGlyph,
-            file.IsDirectory ? "Folder" : "File",
+            file.IsDirectory ? S("Folder") : S("File"),
             Path.GetDirectoryName(file.Path) ?? string.Empty,
             file.File.Size,
             CalculateFallbackSizeOnDisk(file.File.Size),
@@ -2766,14 +2790,14 @@ public sealed partial class FileExplorerView : UserControl
         root.Children.Add(CreatePropertiesHeader(properties));
         root.Children.Add(CreatePropertiesSeparator());
         root.Children.Add(CreatePropertiesRows(
-            ("Type:", properties.Type),
-            ("Location:", properties.Location),
-            ("Size:", FormatByteCount(properties.Size)),
-            ("Size on disk:", FormatByteCount(properties.SizeOnDisk))));
+            (S("TypeLabel"), properties.Type),
+            (S("LocationLabel"), properties.Location),
+            (S("SizeLabel"), FormatByteCount(properties.Size)),
+            (S("SizeOnDiskLabel"), FormatByteCount(properties.SizeOnDisk))));
         root.Children.Add(CreatePropertiesSeparator());
         root.Children.Add(CreatePropertiesRows(
-            ("Created:", FormatDateTime(properties.Created)),
-            ("Modified:", FormatDateTime(properties.Modified))));
+            (S("CreatedLabel"), FormatDateTime(properties.Created)),
+            (S("ModifiedLabel"), FormatDateTime(properties.Modified))));
 
         return root;
     }
@@ -2915,10 +2939,10 @@ public sealed partial class FileExplorerView : UserControl
         var extension = file.Extension;
         if (string.IsNullOrWhiteSpace(extension))
         {
-            return "File";
+            return S("File");
         }
 
-        return $"{extension.TrimStart('.').ToUpperInvariant()} File ({extension})";
+        return F("FileTypeWithExtension", extension.TrimStart('.').ToUpperInvariant(), extension);
     }
 
     private static string FormatByteCount(long bytes)
@@ -2926,10 +2950,10 @@ public sealed partial class FileExplorerView : UserControl
         var clampedBytes = Math.Max(0, bytes);
         if (clampedBytes == 0)
         {
-            return "0 bytes";
+            return S("ZeroBytes");
         }
 
-        string[] units = ["bytes", "KB", "MB", "GB", "TB"];
+        string[] units = [S("BytesUnit"), "KB", "MB", "GB", "TB"];
         var size = (double)clampedBytes;
         var unitIndex = 0;
         while (size >= 1024 && unitIndex < units.Length - 1)
@@ -2939,10 +2963,10 @@ public sealed partial class FileExplorerView : UserControl
         }
 
         var readableSize = unitIndex == 0
-            ? $"{clampedBytes.ToString("N0", CultureInfo.CurrentCulture)} bytes"
+            ? $"{clampedBytes.ToString("N0", CultureInfo.CurrentCulture)} {S("BytesUnit")}"
             : $"{size.ToString("0.#", CultureInfo.CurrentCulture)} {units[unitIndex]}";
 
-        return $"{readableSize} ({clampedBytes.ToString("N0", CultureInfo.CurrentCulture)} bytes)";
+        return $"{readableSize} ({clampedBytes.ToString("N0", CultureInfo.CurrentCulture)} {S("BytesUnit")})";
     }
 
     private static string FormatCompactByteCount(long bytes)
@@ -2950,10 +2974,10 @@ public sealed partial class FileExplorerView : UserControl
         var clampedBytes = Math.Max(0, bytes);
         if (clampedBytes == 0)
         {
-            return "0 bytes";
+            return S("ZeroBytes");
         }
 
-        string[] units = ["bytes", "KB", "MB", "GB", "TB"];
+        string[] units = [S("BytesUnit"), "KB", "MB", "GB", "TB"];
         var size = (double)clampedBytes;
         var unitIndex = 0;
         while (size >= 1024 && unitIndex < units.Length - 1)
@@ -2963,7 +2987,7 @@ public sealed partial class FileExplorerView : UserControl
         }
 
         return unitIndex == 0
-            ? $"{clampedBytes.ToString("N0", CultureInfo.CurrentCulture)} bytes"
+            ? $"{clampedBytes.ToString("N0", CultureInfo.CurrentCulture)} {S("BytesUnit")}"
             : $"{size.ToString("0.#", CultureInfo.CurrentCulture)} {units[unitIndex]}";
     }
 
@@ -2976,7 +3000,7 @@ public sealed partial class FileExplorerView : UserControl
 
     private static string FormatItemCount(int itemCount)
     {
-        return itemCount == 1 ? "1 item" : $"{itemCount} items";
+        return itemCount == 1 ? S("ItemCountSingle") : F("ItemCountMultiple", itemCount);
     }
 
     private static T PopLast<T>(List<T> items)

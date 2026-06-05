@@ -29,6 +29,10 @@ public sealed partial class LocationSidebarView : Page
 
     public LocationSidebarViewModel ViewModel { get; }
 
+    private static string S(string key) => LocalizationService.Get(key);
+
+    private static string F(string key, params object?[] args) => LocalizationService.Format(key, args);
+
     private async void Page_Loaded(object sender, RoutedEventArgs e)
     {
         if (_hasLoaded)
@@ -104,10 +108,10 @@ public sealed partial class LocationSidebarView : Page
         }
 
         var displayName = await PromptForDisplayNameAsync(
-            "Add location",
+            S("AddLocation"),
             folderPath,
             LocationSidebarViewModel.GetDefaultLocationName(folderPath),
-            "Add");
+            S("Add"));
         if (displayName is null)
         {
             return;
@@ -128,10 +132,10 @@ public sealed partial class LocationSidebarView : Page
         await ViewModel.SelectLocationAsync(location);
 
         var displayName = await PromptForDisplayNameAsync(
-            "Edit location",
+            S("EditLocation"),
             location.Path,
             location.Name,
-            "Save");
+            S("Save"));
         if (displayName is null)
         {
             return;
@@ -200,7 +204,7 @@ public sealed partial class LocationSidebarView : Page
         }
         catch (Exception ex)
         {
-            await ShowErrorDialogAsync("Open location failed", ex.Message);
+            await ShowErrorDialogAsync(S("OpenLocationFailed"), ex.Message);
         }
     }
 
@@ -208,7 +212,7 @@ public sealed partial class LocationSidebarView : Page
     {
         if (App.MainWindow is null)
         {
-            throw new InvalidOperationException("The main window must exist before opening a folder picker.");
+            throw new InvalidOperationException("Main window is not available.");
         }
 
         var picker = new FolderPicker
@@ -233,8 +237,8 @@ public sealed partial class LocationSidebarView : Page
     {
         var nameBox = new TextBox
         {
-            Header = "Location name",
-            PlaceholderText = "Enter a display name",
+            Header = S("LocationName"),
+            PlaceholderText = S("EnterDisplayName"),
             Text = initialName,
         };
 
@@ -259,7 +263,7 @@ public sealed partial class LocationSidebarView : Page
             XamlRoot = XamlRoot,
             Title = title,
             PrimaryButtonText = primaryButtonText,
-            CloseButtonText = "Cancel",
+            CloseButtonText = S("Cancel"),
             DefaultButton = ContentDialogButton.Primary,
             Content = content,
         };
@@ -279,10 +283,10 @@ public sealed partial class LocationSidebarView : Page
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = "Delete location",
-            Content = $"Remove \"{location.Name}\" from Lumina? Files on disk will not be deleted.",
-            PrimaryButtonText = "Delete",
-            CloseButtonText = "Cancel",
+            Title = S("DeleteLocation"),
+            Content = F("DeleteLocationContent", location.Name),
+            PrimaryButtonText = S("Delete"),
+            CloseButtonText = S("Cancel"),
             DefaultButton = ContentDialogButton.Close,
         };
 
@@ -296,10 +300,10 @@ public sealed partial class LocationSidebarView : Page
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = "Clear locations",
-            Content = "Remove all locations from Lumina? Files on disk will not be deleted.",
-            PrimaryButtonText = "Clear",
-            CloseButtonText = "Cancel",
+            Title = S("ClearLocations"),
+            Content = S("ClearLocationsContent"),
+            PrimaryButtonText = S("Clear"),
+            CloseButtonText = S("Cancel"),
             DefaultButton = ContentDialogButton.Close,
         };
 
@@ -315,7 +319,7 @@ public sealed partial class LocationSidebarView : Page
             XamlRoot = XamlRoot,
             Title = title,
             Content = message,
-            CloseButtonText = "OK",
+            CloseButtonText = S("OK"),
         };
 
         await dialog.ShowAsync();

@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 
 using Windows.Foundation;
 
+using Lumina.App.Services;
 using Lumina.App.Views;
 
 namespace Lumina.App;
@@ -32,6 +33,27 @@ public sealed partial class MainWindow : Window
         ShellNav.PaneOpened += (_, _) => UpdateSidebarPaneContentLayout();
         ShellNav.PaneClosing += (_, _) => SidebarPaneContent.Visibility = Visibility.Collapsed;
         ShellNav.PaneClosed += (_, _) => UpdateSidebarPaneContentLayout();
+        Closed += MainWindow_Closed;
+        LocalizationService.LanguageChanged += LocalizationService_LanguageChanged;
+        UpdateLocalizedShellText();
+    }
+
+    private void MainWindow_Closed(object sender, WindowEventArgs args)
+    {
+        LocalizationService.LanguageChanged -= LocalizationService_LanguageChanged;
+    }
+
+    private void LocalizationService_LanguageChanged(object? sender, EventArgs e)
+    {
+        UpdateLocalizedShellText();
+    }
+
+    private void UpdateLocalizedShellText()
+    {
+        if (ShellNav.SettingsItem is NavigationViewItem settingsItem)
+        {
+            settingsItem.Content = LocalizationService.Get("Settings");
+        }
     }
 
     private void AppTitleBar_PaneToggleRequested(TitleBar sender, object args)

@@ -35,7 +35,7 @@ public sealed partial class TagSidebarView : Page
         new("Yellow", "#ffeb3b"),
         new("Amber", "#ffc107"),
         new("Orange", "#ff9800"),
-        new("Deep orange", "#ff5722"),
+        new("DeepOrange", "#ff5722"),
         new("Brown", "#795548"),
         new("Slate", "#607d8b"),
         new("Gray", "#9e9e9e"),
@@ -58,6 +58,10 @@ public sealed partial class TagSidebarView : Page
     }
 
     public TagSidebarViewModel ViewModel { get; }
+
+    private static string S(string key) => LocalizationService.Get(key);
+
+    private static string F(string key, params object?[] args) => LocalizationService.Format(key, args);
 
     private async void Page_Loaded(object sender, RoutedEventArgs e)
     {
@@ -103,7 +107,7 @@ public sealed partial class TagSidebarView : Page
                 FontSize = 14,
                 Glyph = "\uE70F",
             },
-            Text = "Edit group",
+            Text = S("EditGroup"),
             Tag = group,
         };
         editItem.Click += EditGroup_Click;
@@ -115,7 +119,7 @@ public sealed partial class TagSidebarView : Page
                 FontSize = 14,
                 Glyph = "\uE74D",
             },
-            Text = "Delete group",
+            Text = S("DeleteGroup"),
             Tag = group,
         };
         deleteItem.Click += DeleteGroup_Click;
@@ -151,7 +155,7 @@ public sealed partial class TagSidebarView : Page
         var addItem = new MenuFlyoutItem
         {
             Icon = new SymbolIcon(Symbol.Add),
-            Text = "Add tag",
+            Text = S("AddTag"),
             Tag = group,
         };
         addItem.Click += AddTagToGroup_Click;
@@ -161,7 +165,7 @@ public sealed partial class TagSidebarView : Page
         var reorderItem = new MenuFlyoutItem
         {
             Icon = new SymbolIcon(Symbol.Sort),
-            Text = "Reorder tags",
+            Text = S("ReorderTags"),
             Tag = group,
             IsEnabled = canSortTags,
         };
@@ -181,8 +185,8 @@ public sealed partial class TagSidebarView : Page
         }
 
         var result = await PromptForGroupAsync(
-            "Add tag group",
-            "Create",
+            S("AddTagGroup"),
+            S("Create"),
             string.Empty,
             string.Empty,
             "#2196f3",
@@ -217,10 +221,10 @@ public sealed partial class TagSidebarView : Page
             {
                 await _tagGroupTransferService.ExportAsync(filePath);
                 await ShowMessageDialogAsync(
-                    "Tag library exported",
-                    $"Saved to {filePath}");
+                    S("TagLibraryExported"),
+                    F("SavedToPath", filePath));
             },
-            "Export failed");
+            S("ExportFailed"));
     }
 
     private async void ImportTagLibrary_Click(object sender, RoutedEventArgs e)
@@ -248,10 +252,10 @@ public sealed partial class TagSidebarView : Page
                 var result = await _tagGroupTransferService.ImportAsync(filePath);
                 TagLibraryEvents.RaiseImported();
                 await ShowMessageDialogAsync(
-                    "Tag library imported",
+                    S("TagLibraryImported"),
                     CreateImportSummary(result));
             },
-            "Import failed");
+            S("ImportFailed"));
     }
 
     private async void AddTagToGroup_Click(object sender, RoutedEventArgs e)
@@ -262,8 +266,8 @@ public sealed partial class TagSidebarView : Page
         }
 
         var result = await PromptForTagAsync(
-            "Add tag",
-            "Create",
+            S("AddTag"),
+            S("Create"),
             initialGroupId: group.Id,
             initialName: string.Empty,
             initialColor: group.DefaultColor,
@@ -305,8 +309,8 @@ public sealed partial class TagSidebarView : Page
         }
 
         var result = await PromptForGroupAsync(
-            "Edit tag group",
-            "Save",
+            S("EditTagGroup"),
+            S("Save"),
             group.Name,
             group.Description ?? string.Empty,
             group.DefaultColor,
@@ -332,9 +336,9 @@ public sealed partial class TagSidebarView : Page
         }
 
         var shouldDelete = await ConfirmAsync(
-            "Delete tag group",
-            $"Remove \"{group.Name}\" and all tags in this group?",
-            "Delete");
+            S("DeleteTagGroup"),
+            F("DeleteTagGroupContent", group.Name),
+            S("Delete"));
         if (!shouldDelete)
         {
             return;
@@ -351,9 +355,9 @@ public sealed partial class TagSidebarView : Page
         }
 
         var shouldClear = await ConfirmAsync(
-            "Clear tags",
-            "Remove all tag groups and tags? Existing tags in file names will not be changed.",
-            "Clear");
+            S("ClearTags"),
+            S("ClearTagsContent"),
+            S("Clear"));
         if (!shouldClear)
         {
             return;
@@ -393,14 +397,14 @@ public sealed partial class TagSidebarView : Page
 
         var editItem = new MenuFlyoutItem
         {
-            Text = "Edit tag",
+            Text = S("EditTag"),
             Tag = tag,
         };
         editItem.Click += EditTag_Click;
 
         var deleteItem = new MenuFlyoutItem
         {
-            Text = "Delete tag",
+            Text = S("DeleteTag"),
             Tag = tag,
         };
         deleteItem.Click += DeleteTag_Click;
@@ -444,8 +448,8 @@ public sealed partial class TagSidebarView : Page
     private async Task EditTagAsync(TagItemViewModel tag)
     {
         var result = await PromptForTagAsync(
-            "Edit tag",
-            "Save",
+            S("EditTag"),
+            S("Save"),
             initialGroupId: tag.GroupId,
             initialName: tag.Name,
             initialColor: tag.Color,
@@ -467,9 +471,9 @@ public sealed partial class TagSidebarView : Page
     private async Task DeleteTagAsync(TagItemViewModel tag)
     {
         var shouldDelete = await ConfirmAsync(
-            "Delete tag",
-            $"Remove \"{tag.Name}\" from the tag library?",
-            "Delete");
+            S("DeleteTag"),
+            F("DeleteTagLibraryContent", tag.Name),
+            S("Delete"));
         if (!shouldDelete)
         {
             return;
@@ -488,28 +492,28 @@ public sealed partial class TagSidebarView : Page
     {
         var nameBox = new TextBox
         {
-            Header = "Group name",
-            PlaceholderText = "Enter a group name",
+            Header = S("GroupName"),
+            PlaceholderText = S("EnterGroupName"),
             Text = initialName,
         };
 
         var descriptionBox = new TextBox
         {
-            Header = "Description",
-            PlaceholderText = "Optional description",
+            Header = S("Description"),
+            PlaceholderText = S("OptionalDescription"),
             Text = initialDescription,
             AcceptsReturn = true,
             Height = 76,
             TextWrapping = TextWrapping.Wrap,
         };
 
-        var colorBox = new ColorSelector("Default tag color", initialDefaultColor, "#2196f3");
-        var textColorBox = new ColorSelector("Default text color", initialDefaultTextColor, "#ffffff");
+        var colorBox = new ColorSelector(S("DefaultTagColor"), initialDefaultColor, "#2196f3");
+        var textColorBox = new ColorSelector(S("DefaultTextColor"), initialDefaultTextColor, "#ffffff");
         var preview = new TagPreview(
             nameBox,
             colorBox,
             textColorBox,
-            "Tag Preview");
+            S("TagPreview"));
 
         var content = new StackPanel
         {
@@ -529,7 +533,7 @@ public sealed partial class TagSidebarView : Page
             XamlRoot = XamlRoot,
             Title = title,
             PrimaryButtonText = primaryButtonText,
-            CloseButtonText = "Cancel",
+            CloseButtonText = S("Cancel"),
             DefaultButton = ContentDialogButton.Primary,
             Content = CreateDialogContent(content),
         };
@@ -577,21 +581,21 @@ public sealed partial class TagSidebarView : Page
 
         var nameBox = new TextBox
         {
-            Header = "Tag name",
-            PlaceholderText = "Enter a tag name",
+            Header = S("TagName"),
+            PlaceholderText = S("EnterTagName"),
             Text = initialName,
         };
 
         var groupBox = CreateGroupComboBox(initialGroupId);
         groupBox.IsEnabled = allowGroupChange;
 
-        var colorBox = new ColorSelector("Tag color", initialColor, initialColor);
-        var textColorBox = new ColorSelector("Text color", initialTextColor, initialTextColor);
+        var colorBox = new ColorSelector(S("TagColor"), initialColor, initialColor);
+        var textColorBox = new ColorSelector(S("TextColor"), initialTextColor, initialTextColor);
         var preview = new TagPreview(
             nameBox,
             colorBox,
             textColorBox,
-            "Tag Preview");
+            S("TagPreview"));
 
         groupBox.SelectionChanged += (_, _) =>
         {
@@ -622,7 +626,7 @@ public sealed partial class TagSidebarView : Page
             XamlRoot = XamlRoot,
             Title = title,
             PrimaryButtonText = primaryButtonText,
-            CloseButtonText = "Cancel",
+            CloseButtonText = S("Cancel"),
             DefaultButton = ContentDialogButton.Primary,
             Content = CreateDialogContent(content),
         };
@@ -692,7 +696,7 @@ public sealed partial class TagSidebarView : Page
                     new SymbolIcon(Symbol.Sort),
                     new TextBlock
                     {
-                        Text = "Sort A to Z",
+                        Text = S("SortAToZ"),
                         VerticalAlignment = VerticalAlignment.Center,
                     },
                 },
@@ -700,7 +704,7 @@ public sealed partial class TagSidebarView : Page
         };
         ToolTipService.SetToolTip(
             sortByNameButton,
-            "Sort tags alphabetically (you can still drag items afterward).");
+            S("SortTagsAlphabeticallyHint"));
 
         sortByNameButton.Click += (_, _) =>
         {
@@ -715,8 +719,7 @@ public sealed partial class TagSidebarView : Page
             {
                 new TextBlock
                 {
-                    Text =
-                        "Drag a row to reorder (no need to select it first). Use Sort A–Z for alphabetical order, then drag to fine-tune.",
+                    Text = S("ReorderTagsHelp"),
                     TextWrapping = TextWrapping.Wrap,
                 },
                 sortByNameButton,
@@ -727,9 +730,9 @@ public sealed partial class TagSidebarView : Page
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = $"Reorder tags in {group.Name}",
-            PrimaryButtonText = "Save",
-            CloseButtonText = "Cancel",
+            Title = F("ReorderTagsTitle", group.Name),
+            PrimaryButtonText = S("Save"),
+            CloseButtonText = S("Cancel"),
             DefaultButton = ContentDialogButton.Primary,
             Content = content,
         };
@@ -792,7 +795,7 @@ public sealed partial class TagSidebarView : Page
             Title = title,
             Content = content,
             PrimaryButtonText = primaryButtonText,
-            CloseButtonText = "Cancel",
+            CloseButtonText = S("Cancel"),
             DefaultButton = ContentDialogButton.Close,
         };
 
@@ -826,7 +829,7 @@ public sealed partial class TagSidebarView : Page
             SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
             SuggestedFileName = $"Lumina-tags-{DateTime.Now:yyyy-MM-dd}",
         };
-        picker.FileTypeChoices.Add("JSON tag library", new List<string> { ".json" });
+        picker.FileTypeChoices.Add(S("JsonTagLibrary"), new List<string> { ".json" });
         InitializePicker(picker);
 
         var file = await picker.PickSaveFileAsync();
@@ -852,7 +855,7 @@ public sealed partial class TagSidebarView : Page
     {
         if (App.MainWindow is null)
         {
-            throw new InvalidOperationException("The main window must exist before opening a file picker.");
+            throw new InvalidOperationException("Main window is not available.");
         }
 
         var windowHandle = WindowNative.GetWindowHandle(App.MainWindow);
@@ -862,9 +865,9 @@ public sealed partial class TagSidebarView : Page
     private Task<bool> ConfirmTagLibraryImportAsync()
     {
         return ConfirmAsync(
-            "Import tag library",
-            "Importing a tag library replaces the current tag groups and tags.",
-            "Import");
+            S("ImportTagLibrary"),
+            S("ImportTagLibraryContent"),
+            S("Import"));
     }
 
     private async Task ShowMessageDialogAsync(string title, string message)
@@ -874,7 +877,7 @@ public sealed partial class TagSidebarView : Page
             XamlRoot = XamlRoot,
             Title = title,
             Content = message,
-            CloseButtonText = "OK",
+            CloseButtonText = S("OK"),
         };
 
         await dialog.ShowAsync();
@@ -882,22 +885,18 @@ public sealed partial class TagSidebarView : Page
 
     private static string CreateImportSummary(TagGroupImportResult result)
     {
-        var parts = new List<string>
-        {
-            $"Source: {result.SourceFormat}",
-            $"tags: {result.TagCount}",
-        };
-
-        parts.Add($"groups: {result.TagGroupCount}");
-
-        return string.Join(", ", parts);
+        return F(
+            "ImportSummary",
+            result.SourceFormat,
+            result.TagCount,
+            result.TagGroupCount);
     }
 
     private ComboBox CreateGroupComboBox(string? selectedGroupId)
     {
         var comboBox = new ComboBox
         {
-            Header = "Group",
+            Header = S("Group"),
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
 
@@ -1107,7 +1106,7 @@ public sealed partial class TagSidebarView : Page
                 {
                     new TextBlock
                     {
-                        Text = "Tag Preview",
+                        Text = S("TagPreview"),
                         FontSize = 13,
                         FontWeight = FontWeights.SemiBold,
                         VerticalAlignment = VerticalAlignment.Center,
@@ -1221,7 +1220,7 @@ public sealed partial class TagSidebarView : Page
                     HorizontalAlignment = HorizontalAlignment.Center,
                 },
             };
-            ToolTipService.SetToolTip(_pickerButton, "Custom color");
+            ToolTipService.SetToolTip(_pickerButton, S("CustomColor"));
             _pickerButton.Click += PickerButton_Click;
 
             var paletteGrid = new Grid
@@ -1283,7 +1282,7 @@ public sealed partial class TagSidebarView : Page
                 Tag = color,
                 Content = CreateSwatch(color, 18, 4),
             };
-            ToolTipService.SetToolTip(button, $"{name} {color}");
+            ToolTipService.SetToolTip(button, $"{S(name)} {color}");
             button.Click += (_, _) => SelectColor(color);
 
             return button;
@@ -1324,7 +1323,7 @@ public sealed partial class TagSidebarView : Page
             };
             var doneButton = new Button
             {
-                Content = "Done",
+                Content = S("Done"),
                 MinWidth = 72,
                 HorizontalAlignment = HorizontalAlignment.Right,
             };

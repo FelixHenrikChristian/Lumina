@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:services="using:Lumina.App.Services"
     xmlns:views="using:Lumina.App.Views"
     Title="Lumina"
     mc:Ignorable="d">
@@ -57,11 +58,11 @@
                         <SelectorBarItem
                             x:Name="LocationsSelectorItem"
                             Icon="Folder"
-                            Text="Locations" />
+                            services:Localization.TextKey="Locations" />
                         <SelectorBarItem
                             x:Name="TagsSelectorItem"
                             Icon="Tag"
-                            Text="Tags" />
+                            services:Localization.TextKey="Tags" />
                     </SelectorBar>
 
                     <Frame

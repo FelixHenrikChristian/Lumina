@@ -8,6 +8,7 @@
     xmlns:viewModels="using:Lumina.App.ViewModels"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:services="using:Lumina.App.Services"
     mc:Ignorable="d">
 
     <UserControl.Resources>
@@ -164,7 +165,7 @@
                         Click="BackButton_Click"
                         IsEnabled="{Binding CanNavigateBack}"
                         Style="{StaticResource ExplorerNavigationButtonStyle}"
-                        ToolTipService.ToolTip="Back">
+                        services:Localization.ToolTipKey="Back">
                         <FontIcon
                             FontFamily="Segoe Fluent Icons"
                             FontSize="14"
@@ -176,7 +177,7 @@
                         Click="ForwardButton_Click"
                         IsEnabled="{Binding CanNavigateForward}"
                         Style="{StaticResource ExplorerNavigationButtonStyle}"
-                        ToolTipService.ToolTip="Forward">
+                        services:Localization.ToolTipKey="Forward">
                         <FontIcon
                             FontFamily="Segoe Fluent Icons"
                             FontSize="14"
@@ -188,7 +189,7 @@
                         Click="UpButton_Click"
                         IsEnabled="{Binding CanNavigateToParent}"
                         Style="{StaticResource ExplorerNavigationButtonStyle}"
-                        ToolTipService.ToolTip="Up one level">
+                        services:Localization.ToolTipKey="UpOneLevel">
                         <FontIcon
                             FontFamily="Segoe Fluent Icons"
                             FontSize="14"
@@ -200,7 +201,7 @@
                         Click="RefreshButton_Click"
                         IsEnabled="{Binding CanRefresh}"
                         Style="{StaticResource ExplorerNavigationButtonStyle}"
-                        ToolTipService.ToolTip="Refresh">
+                        services:Localization.ToolTipKey="Refresh">
                         <FontIcon
                             FontFamily="Segoe Fluent Icons"
                             FontSize="14"
@@ -289,15 +290,15 @@
                         <CommandBar.PrimaryCommands>
                         <AppBarElementContainer Style="{StaticResource ExplorerCommandContainerStyle}">
                             <Button
-                                AutomationProperties.Name="New"
+                                services:Localization.AutomationNameKey="New"
                                 IsEnabled="{Binding CanUseFolderCommands}"
                                 Style="{StaticResource ExplorerCommandTextButtonStyle}"
-                                ToolTipService.ToolTip="New">
+                                services:Localization.ToolTipKey="New">
                                 <Button.Flyout>
                                     <MenuFlyout Placement="BottomEdgeAlignedLeft">
                                         <MenuFlyoutItem
                                             Click="NewFolderMenuItem_Click"
-                                            Text="Folder">
+                                            services:Localization.TextKey="Folder">
                                             <MenuFlyoutItem.Icon>
                                                 <FontIcon Glyph="&#xE8B7;" />
                                             </MenuFlyoutItem.Icon>
@@ -309,7 +310,7 @@
                                         FontFamily="Segoe Fluent Icons"
                                         FontSize="14"
                                         Glyph="&#xE710;" />
-                                    <TextBlock VerticalAlignment="Center" Text="New" />
+                                    <TextBlock VerticalAlignment="Center" services:Localization.TextKey="New" />
                                 </StackPanel>
                             </Button>
                         </AppBarElementContainer>
@@ -321,11 +322,11 @@
                             Style="{StaticResource ExplorerCommandContainerStyle}">
                             <Button
                                 x:Name="UndoButton"
-                                AutomationProperties.Name="Undo"
+                                services:Localization.AutomationNameKey="Undo"
                                 Click="UndoButton_Click"
                                 IsEnabled="False"
                                 Style="{StaticResource ExplorerCommandIconButtonStyle}"
-                                ToolTipService.ToolTip="Undo">
+                                services:Localization.ToolTipKey="Undo">
                                 <FontIcon
                                     FontFamily="Segoe Fluent Icons"
                                     FontSize="14"
@@ -338,11 +339,11 @@
                             Style="{StaticResource ExplorerCommandContainerStyle}">
                             <Button
                                 x:Name="RedoButton"
-                                AutomationProperties.Name="Redo"
+                                services:Localization.AutomationNameKey="Redo"
                                 Click="RedoButton_Click"
                                 IsEnabled="False"
                                 Style="{StaticResource ExplorerCommandIconButtonStyle}"
-                                ToolTipService.ToolTip="Redo">
+                                services:Localization.ToolTipKey="Redo">
                                 <FontIcon
                                     FontFamily="Segoe Fluent Icons"
                                     FontSize="14"
@@ -356,11 +357,11 @@
                             Width="40"
                             Style="{StaticResource ExplorerCommandContainerStyle}">
                             <Button
-                                AutomationProperties.Name="Cut"
+                                services:Localization.AutomationNameKey="Cut"
                                 Click="CutButton_Click"
                                 IsEnabled="{Binding CanUseSelectedFileCommands}"
                                 Style="{StaticResource ExplorerCommandIconButtonStyle}"
-                                ToolTipService.ToolTip="Cut">
+                                services:Localization.ToolTipKey="Cut">
                                 <FontIcon
                                     FontFamily="Segoe Fluent Icons"
                                     FontSize="14"
@@ -372,11 +373,11 @@
                             Width="40"
                             Style="{StaticResource ExplorerCommandContainerStyle}">
                             <Button
-                                AutomationProperties.Name="Copy"
+                                services:Localization.AutomationNameKey="Copy"
                                 Click="CopyButton_Click"
                                 IsEnabled="{Binding CanUseSelectedFileCommands}"
                                 Style="{StaticResource ExplorerCommandIconButtonStyle}"
-                                ToolTipService.ToolTip="Copy">
+                                services:Localization.ToolTipKey="Copy">
                                 <FontIcon
                                     FontFamily="Segoe Fluent Icons"
                                     FontSize="14"
@@ -388,11 +389,11 @@
                             Width="40"
                             Style="{StaticResource ExplorerCommandContainerStyle}">
                             <Button
-                                AutomationProperties.Name="Paste"
+                                services:Localization.AutomationNameKey="Paste"
                                 Click="PasteButton_Click"
                                 IsEnabled="{Binding CanUseFolderCommands}"
                                 Style="{StaticResource ExplorerCommandIconButtonStyle}"
-                                ToolTipService.ToolTip="Paste">
+                                services:Localization.ToolTipKey="Paste">
                                 <FontIcon
                                     FontFamily="Segoe Fluent Icons"
                                     FontSize="14"
@@ -404,11 +405,11 @@
                             Width="40"
                             Style="{StaticResource ExplorerCommandContainerStyle}">
                             <Button
-                                AutomationProperties.Name="Rename"
+                                services:Localization.AutomationNameKey="Rename"
                                 Click="RenameButton_Click"
                                 IsEnabled="{Binding CanUseSelectedFileCommands}"
                                 Style="{StaticResource ExplorerCommandIconButtonStyle}"
-                                ToolTipService.ToolTip="Rename">
+                                services:Localization.ToolTipKey="Rename">
                                 <FontIcon
                                     FontFamily="Segoe Fluent Icons"
                                     FontSize="14"
@@ -420,11 +421,11 @@
                             Width="40"
                             Style="{StaticResource ExplorerCommandContainerStyle}">
                             <Button
-                                AutomationProperties.Name="Delete"
+                                services:Localization.AutomationNameKey="Delete"
                                 Click="DeleteButton_Click"
                                 IsEnabled="{Binding CanUseSelectedFileCommands}"
                                 Style="{StaticResource ExplorerCommandIconButtonStyle}"
-                                ToolTipService.ToolTip="Delete">
+                                services:Localization.ToolTipKey="Delete">
                                 <FontIcon
                                     FontFamily="Segoe Fluent Icons"
                                     FontSize="14"
@@ -436,17 +437,17 @@
 
                         <AppBarElementContainer Style="{StaticResource ExplorerCommandContainerStyle}">
                             <Button
-                                AutomationProperties.Name="Sort"
+                                services:Localization.AutomationNameKey="Sort"
                                 Click="SortButton_Click"
                                 IsEnabled="{Binding CanSort}"
                                 Style="{StaticResource ExplorerCommandTextButtonStyle}"
-                                ToolTipService.ToolTip="Sort">
+                                services:Localization.ToolTipKey="Sort">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <FontIcon
                                         FontFamily="Segoe Fluent Icons"
                                         FontSize="14"
                                         Glyph="&#xE8CB;" />
-                                    <TextBlock VerticalAlignment="Center" Text="Sort" />
+                                    <TextBlock VerticalAlignment="Center" services:Localization.TextKey="Sort" />
                                     <FontIcon
                                         FontFamily="Segoe Fluent Icons"
                                         FontSize="10"
@@ -470,10 +471,10 @@
 
                         <AppBarElementContainer Style="{StaticResource ExplorerCommandContainerStyle}">
                             <Button
-                                AutomationProperties.Name="Tag filter"
+                                services:Localization.AutomationNameKey="TagFilter"
                                 IsEnabled="{Binding CanUseTagFilters}"
                                 Style="{StaticResource ExplorerCommandTextButtonStyle}"
-                                ToolTipService.ToolTip="Tag filter">
+                                services:Localization.ToolTipKey="TagFilter">
                                 <Button.Flyout>
                                     <Flyout
                                         Opened="TagFilterFlyout_Opened"
@@ -505,7 +506,7 @@
                                                     <TextBlock
                                                         VerticalAlignment="Center"
                                                         FontWeight="SemiBold"
-                                                        Text="Tag filter" />
+                                                        services:Localization.TextKey="TagFilter" />
                                                 </StackPanel>
 
                                                 <Button
@@ -517,7 +518,7 @@
                                                     Click="ClearTagFiltersButton_Click"
                                                     IsEnabled="{Binding CanClearTagFilters}"
                                                     Style="{StaticResource ExplorerNavigationButtonStyle}"
-                                                    ToolTipService.ToolTip="Clear tag filter">
+                                                    services:Localization.ToolTipKey="ClearTagFilter">
                                                     <FontIcon
                                                         FontFamily="Segoe Fluent Icons"
                                                         FontSize="11"
@@ -528,7 +529,7 @@
                                             <TextBlock
                                                 Grid.Row="1"
                                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                Text="No tags in library."
+                                                services:Localization.TextKey="NoTagsInLibrary"
                                                 Visibility="{Binding TagFilterEmptyVisibility}" />
 
                                             <ScrollViewer
@@ -552,7 +553,7 @@
 
                                                                 <TextBlock
                                                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                                    Text="No tags"
+                                                                    services:Localization.TextKey="NoTags"
                                                                     Visibility="{Binding EmptyTagsVisibility}" />
 
                                                                 <ItemsControl
@@ -620,7 +621,7 @@
             IsOpen="{Binding HasError}"
             Message="{Binding ErrorMessage}"
             Severity="Error"
-            Title="Folder error"
+            services:Localization.TitleKey="FolderError"
             Visibility="{Binding ErrorVisibility}" />
 
         <Grid
@@ -642,13 +643,13 @@
                     Glyph="&#xE8B7;" />
                 <TextBlock
                     HorizontalAlignment="Center"
-                    FontSize="18"
-                    FontWeight="SemiBold"
-                    Text="Select a location" />
-                <TextBlock
-                    HorizontalAlignment="Center"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="Choose a managed folder from the Locations pane." />
+                FontSize="18"
+                FontWeight="SemiBold"
+                services:Localization.TextKey="SelectLocation" />
+            <TextBlock
+                HorizontalAlignment="Center"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                services:Localization.TextKey="ChooseManagedFolderFromLocationsPane" />
             </StackPanel>
 
             <StackPanel
@@ -660,9 +661,9 @@
                     Width="36"
                     Height="36"
                     IsActive="{Binding IsBusy}" />
-                <TextBlock
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="Loading folder..." />
+            <TextBlock
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                services:Localization.TextKey="LoadingFolder" />
             </StackPanel>
 
             <StackPanel
@@ -675,13 +676,13 @@
                     Glyph="&#xE8B7;" />
                 <TextBlock
                     HorizontalAlignment="Center"
-                    FontSize="18"
-                    FontWeight="SemiBold"
-                    Text="This folder is empty" />
-                <TextBlock
-                    HorizontalAlignment="Center"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="Files and folders will appear here." />
+                FontSize="18"
+                FontWeight="SemiBold"
+                services:Localization.TextKey="ThisFolderIsEmpty" />
+            <TextBlock
+                HorizontalAlignment="Center"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                services:Localization.TextKey="FilesAndFoldersWillAppearHere" />
             </StackPanel>
 
             <ScrollViewer

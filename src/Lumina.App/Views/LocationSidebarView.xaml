@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:services="using:Lumina.App.Services"
     Loaded="Page_Loaded"
     mc:Ignorable="d">
 
@@ -18,7 +19,7 @@
             <MenuFlyout x:Key="BlankAreaMenuFlyout">
                 <MenuFlyoutItem
                     Click="AddLocation_Click"
-                    Text="Add location">
+                    services:Localization.TextKey="AddLocation">
                     <MenuFlyoutItem.Icon>
                         <SymbolIcon Symbol="Add" />
                     </MenuFlyoutItem.Icon>
@@ -42,7 +43,7 @@
                 VerticalAlignment="Center"
                 FontSize="20"
                 FontWeight="SemiBold"
-                Text="Locations" />
+                services:Localization.TextKey="Locations" />
 
             <Button
                 Grid.Column="1"
@@ -50,12 +51,12 @@
                 Height="30"
                 Padding="0"
                 IsEnabled="{Binding CanAddLocation}"
-                ToolTipService.ToolTip="Location actions">
+                services:Localization.ToolTipKey="LocationActions">
                 <Button.Flyout>
                     <MenuFlyout>
                         <MenuFlyoutItem
                             Click="AddLocation_Click"
-                            Text="Add location">
+                            services:Localization.TextKey="AddLocation">
                             <MenuFlyoutItem.Icon>
                                 <SymbolIcon Symbol="Add" />
                             </MenuFlyoutItem.Icon>
@@ -64,7 +65,7 @@
                         <MenuFlyoutItem
                             Click="ClearLocations_Click"
                             IsEnabled="{Binding CanClearLocations}"
-                            Text="Clear locations">
+                            services:Localization.TextKey="ClearLocations">
                             <MenuFlyoutItem.Icon>
                                 <SymbolIcon Symbol="Delete" />
                             </MenuFlyoutItem.Icon>
@@ -82,7 +83,7 @@
             IsOpen="{Binding HasError}"
             Message="{Binding ErrorMessage}"
             Severity="Error"
-            Title="Location error"
+            services:Localization.TitleKey="LocationError"
             Visibility="{Binding ErrorVisibility}" />
 
         <StackPanel
@@ -97,7 +98,7 @@
                 IsActive="{Binding IsBusy}" />
             <TextBlock
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Text="Loading locations..." />
+                services:Localization.TextKey="LoadingLocations" />
         </StackPanel>
 
         <StackPanel
@@ -110,10 +111,10 @@
             <TextBlock
                 FontSize="16"
                 FontWeight="SemiBold"
-                Text="No locations yet" />
+                services:Localization.TextKey="NoLocationsYet" />
             <TextBlock
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Text="Managed folders will appear here." />
+                services:Localization.TextKey="ManagedFoldersWillAppearHere" />
         </StackPanel>
 
         <ItemsView
@@ -186,7 +187,7 @@
                                             Padding="0"
                                             Click="EditLocation_Click"
                                             CommandParameter="{Binding}"
-                                            ToolTipService.ToolTip="Edit location">
+                                            services:Localization.ToolTipKey="EditLocation">
                                             <FontIcon
                                                 FontSize="14"
                                                 Glyph="&#xE70F;" />
@@ -197,7 +198,7 @@
                                         Padding="0"
                                             Click="DeleteLocation_Click"
                                         CommandParameter="{Binding}"
-                                            ToolTipService.ToolTip="Delete location">
+                                            services:Localization.ToolTipKey="DeleteLocation">
                                         <FontIcon
                                             FontSize="14"
                                                 Glyph="&#xE74D;" />
@@ -211,7 +212,7 @@
                                         HorizontalAlignment="Right"
                                         Click="OpenLocation_Click"
                                         CommandParameter="{Binding}"
-                                        ToolTipService.ToolTip="Open in File Explorer">
+                                        services:Localization.ToolTipKey="OpenInFileExplorer">
                                         <FontIcon
                                             FontSize="14"
                                             Glyph="&#xE838;" />

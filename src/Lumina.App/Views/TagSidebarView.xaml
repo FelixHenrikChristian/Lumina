@@ -7,6 +7,7 @@
     xmlns:converters="using:Lumina.App.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:services="using:Lumina.App.Services"
     VerticalAlignment="Stretch"
     Loaded="Page_Loaded"
     mc:Ignorable="d">
@@ -36,7 +37,7 @@
                 VerticalAlignment="Center"
                 FontSize="20"
                 FontWeight="SemiBold"
-                Text="Tags" />
+                services:Localization.TextKey="Tags" />
 
             <Button
                 Grid.Column="1"
@@ -48,7 +49,7 @@
                     <MenuFlyout>
                         <MenuFlyoutItem
                             Click="AddGroup_Click"
-                            Text="Add tag group">
+                            services:Localization.TextKey="AddTagGroup">
                             <MenuFlyoutItem.Icon>
                                 <SymbolIcon Symbol="Add" />
                             </MenuFlyoutItem.Icon>
@@ -56,7 +57,7 @@
                         <MenuFlyoutSeparator />
                         <MenuFlyoutItem
                             Click="ExportTagLibrary_Click"
-                            Text="Export tag library">
+                            services:Localization.TextKey="ExportTagLibrary">
                             <MenuFlyoutItem.Icon>
                                 <FontIcon
                                     FontSize="14"
@@ -65,7 +66,7 @@
                         </MenuFlyoutItem>
                         <MenuFlyoutItem
                             Click="ImportTagLibrary_Click"
-                            Text="Import tag library">
+                            services:Localization.TextKey="ImportTagLibrary">
                             <MenuFlyoutItem.Icon>
                                 <FontIcon
                                     FontSize="14"
@@ -76,7 +77,7 @@
                         <MenuFlyoutItem
                             Click="ClearTags_Click"
                             IsEnabled="{Binding CanClearTags}"
-                            Text="Clear tags">
+                            services:Localization.TextKey="ClearTags">
                             <MenuFlyoutItem.Icon>
                                 <SymbolIcon Symbol="Delete" />
                             </MenuFlyoutItem.Icon>
@@ -94,7 +95,7 @@
             IsOpen="{Binding HasError}"
             Message="{Binding ErrorMessage}"
             Severity="Error"
-            Title="Tag error"
+            services:Localization.TitleKey="TagError"
             Visibility="{Binding ErrorVisibility}" />
 
         <StackPanel
@@ -109,7 +110,7 @@
                 IsActive="{Binding IsBusy}" />
             <TextBlock
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Text="Loading tags..." />
+                services:Localization.TextKey="LoadingTags" />
         </StackPanel>
 
         <StackPanel
@@ -122,10 +123,10 @@
             <TextBlock
                 FontSize="16"
                 FontWeight="SemiBold"
-                Text="No tag groups yet" />
+                services:Localization.TextKey="NoTagGroupsYet" />
             <TextBlock
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Text="Create a group before adding tags." />
+                services:Localization.TextKey="CreateAGroupBeforeAddingTags" />
         </StackPanel>
 
         <ScrollViewer
@@ -186,7 +187,7 @@
 
                                     <TextBlock
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Text="No tags in this group."
+                                        services:Localization.TextKey="NoTagsInThisGroup"
                                         Visibility="{Binding EmptyTagsVisibility}" />
 
                                     <ItemsControl

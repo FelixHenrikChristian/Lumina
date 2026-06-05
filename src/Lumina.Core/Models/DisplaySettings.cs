@@ -2,6 +2,8 @@ namespace Lumina.Core.Models;
 
 public sealed record DisplaySettings
 {
+    public string Language { get; init; } = DisplayLanguage.System;
+
     public bool ShowFolderNameInIcon { get; init; }
 
     public bool EnableSimplifiedTraditionalSearch { get; init; }
