@@ -10,7 +10,7 @@
   <Identity
     Name="FelixChristian.LuminaTagExplorer"
     Publisher="CN=B40214F1-03C3-4DEC-ADB5-B45B9AA3F2FD"
-    Version="1.0.1.0" />
+    Version="1.0.2.0" />
 
   <mp:PhoneIdentity PhoneProductId="69b59fde-569f-4fd5-816a-c347c6daaf9e" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
