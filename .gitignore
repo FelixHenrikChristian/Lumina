@@ -1,0 +1,23 @@
+# Node / Vite
+node_modules/
+dist/
+logs/
+*.log
+npm-debug.log*
+
+# Editor
+.vs/
+.idea/
+*.suo
+*.user
+
+# WinUI working-tree leftovers: gitignored build artifacts (bin/obj,
+# AppPackages store bundles) that belong to the `winui` branch and live
+# only on disk. The React app keeps its sources directly under src/.
+src/Lumina.App/
+src/Lumina.Core/
+tests/Lumina.Core.Tests/
+.demo-file-ops/
+
+# Local tooling
+.claude/

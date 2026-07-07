@@ -1,0 +1,200 @@
+// Port of DisplayLanguage + LocalizationService: English and Simplified
+// Chinese, 'system' follows the browser locale. Unknown keys return the key.
+export const LANGUAGE_SYSTEM = "system";
+export const LANGUAGE_ENGLISH = "en-US";
+export const LANGUAGE_CHINESE = "zh-Hans";
+
+export function normalizeLanguage(language: string | null | undefined): string {
+  const trimmed = language?.trim();
+  if (!trimmed) return LANGUAGE_SYSTEM;
+  if (trimmed.toLowerCase() === LANGUAGE_SYSTEM) return LANGUAGE_SYSTEM;
+  if (/^zh/i.test(trimmed)) return LANGUAGE_CHINESE;
+  if (/^en/i.test(trimmed)) return LANGUAGE_ENGLISH;
+  return LANGUAGE_SYSTEM;
+}
+
+export function resolveLanguage(preferred: string): "en-US" | "zh-Hans" {
+  const normalized = normalizeLanguage(preferred);
+  if (normalized === LANGUAGE_CHINESE) return "zh-Hans";
+  if (normalized === LANGUAGE_ENGLISH) return "en-US";
+  return /^zh/i.test(navigator.language) ? "zh-Hans" : "en-US";
+}
+
+const en: Record<string, string> = {
+  AppTitle: "Lumina",
+  Locations: "Locations",
+  Tags: "Tags",
+  Settings: "Settings",
+  AddLocation: "Add location",
+  ClearLocations: "Clear all",
+  ClearLocationsConfirm: "Remove all managed folders? Files on disk are not touched.",
+  DemoLocation: "Demo library",
+  AddDemoLocation: "Add demo library",
+  LocationsEmpty: "Managed folders will appear here.",
+  RenameLocation: "Rename",
+  RemoveLocation: "Remove",
+  NoLocationSelected: "No location selected",
+  NoLocationHint: "Choose a managed folder from the Locations pane.",
+  FsaUnsupported: "This browser cannot open local folders. Use Chrome or Edge, or try the demo library.",
+  Search: "Search",
+  SearchInFolder: "Search in {0}",
+  Loading: "Loading folder...",
+  EmptyFolder: "This folder is empty",
+  EmptyFolderHint: "Files and folders will appear here.",
+  Back: "Back",
+  Forward: "Forward",
+  UpOneLevel: "Up one level",
+  Refresh: "Refresh",
+  NewFolder: "New folder",
+  SortBy: "Sort",
+  SortName: "Name",
+  SortModified: "Date modified",
+  SortType: "Type",
+  SortSize: "Size",
+  SortAscending: "Ascending",
+  SortDescending: "Descending",
+  Folder: "Folder",
+  Rename: "Rename",
+  Delete: "Delete",
+  DeleteConfirm: "Permanently delete {0} item(s)? This cannot be undone.",
+  Open: "Open",
+  OpenContainingFolder: "Open containing folder: {0}",
+  FailedLoadFolder: "Could not load this folder: {0}",
+  FailedOpenLocation: "Could not open this location: {0}",
+  TagFilterEmpty: "No tags in your library yet.",
+  ClearTagFilters: "Clear filters",
+  TagGroups: "Tag groups",
+  AddTagGroup: "Add group",
+  AddTag: "Add tag",
+  EditTag: "Edit tag",
+  EditGroup: "Edit group",
+  DeleteGroup: "Delete group",
+  DeleteTag: "Delete tag",
+  RemoveTagFromFile: "Remove tag",
+  TagsEmpty: "No tag groups yet",
+  TagsEmptyHint: "Create a group, then add tags you can drop onto files.",
+  GroupEmpty: "No tags in this group.",
+  UntitledGroup: "Untitled group",
+  UntitledTag: "Untitled tag",
+  Name: "Name",
+  Description: "Description",
+  Color: "Color",
+  TextColor: "Text color",
+  Save: "Save",
+  Cancel: "Cancel",
+  ExportTags: "Export",
+  ImportTags: "Import",
+  ImportResult: "Imported {0} group(s), {1} tag(s) from {2}.",
+  ImportFailed: "Import failed: {0}",
+  ClearTags: "Clear all",
+  ClearTagsConfirm: "Delete the entire tag library? Filenames are not changed.",
+  Language: "Language",
+  LanguageSystem: "Use system setting",
+  LanguageEnglish: "English",
+  LanguageChinese: "简体中文",
+  HideFileExtension: "Hide file extensions",
+  ShowParentFolder: "Show parent folder in search results",
+  SettingsAppearance: "Appearance",
+  SettingsBehavior: "Behavior",
+  DropTagHint: "Drop to tag",
+  ItemsCount: "{0} items",
+  SelectedCount: "{0} selected",
+};
+
+const zh: Record<string, string> = {
+  AppTitle: "Lumina",
+  Locations: "位置",
+  Tags: "标签",
+  Settings: "设置",
+  AddLocation: "添加位置",
+  ClearLocations: "全部清除",
+  ClearLocationsConfirm: "移除所有管理的文件夹？磁盘上的文件不会受影响。",
+  DemoLocation: "演示库",
+  AddDemoLocation: "添加演示库",
+  LocationsEmpty: "管理的文件夹将显示在这里。",
+  RenameLocation: "重命名",
+  RemoveLocation: "移除",
+  NoLocationSelected: "未选择位置",
+  NoLocationHint: "请从“位置”面板选择一个管理的文件夹。",
+  FsaUnsupported: "此浏览器无法打开本地文件夹。请使用 Chrome 或 Edge，或试试演示库。",
+  Search: "搜索",
+  SearchInFolder: "在 {0} 中搜索",
+  Loading: "正在加载文件夹...",
+  EmptyFolder: "此文件夹为空",
+  EmptyFolderHint: "文件和文件夹将显示在这里。",
+  Back: "后退",
+  Forward: "前进",
+  UpOneLevel: "上一级",
+  Refresh: "刷新",
+  NewFolder: "新建文件夹",
+  SortBy: "排序",
+  SortName: "名称",
+  SortModified: "修改日期",
+  SortType: "类型",
+  SortSize: "大小",
+  SortAscending: "升序",
+  SortDescending: "降序",
+  Folder: "文件夹",
+  Rename: "重命名",
+  Delete: "删除",
+  DeleteConfirm: "永久删除 {0} 个项目？此操作无法撤消。",
+  Open: "打开",
+  OpenContainingFolder: "打开所在文件夹：{0}",
+  FailedLoadFolder: "无法加载此文件夹：{0}",
+  FailedOpenLocation: "无法打开此位置：{0}",
+  TagFilterEmpty: "标签库中还没有标签。",
+  ClearTagFilters: "清除筛选",
+  TagGroups: "标签组",
+  AddTagGroup: "添加组",
+  AddTag: "添加标签",
+  EditTag: "编辑标签",
+  EditGroup: "编辑组",
+  DeleteGroup: "删除组",
+  DeleteTag: "删除标签",
+  RemoveTagFromFile: "移除标签",
+  TagsEmpty: "还没有标签组",
+  TagsEmptyHint: "创建一个组，然后添加可拖放到文件上的标签。",
+  GroupEmpty: "此组中没有标签。",
+  UntitledGroup: "未命名组",
+  UntitledTag: "未命名标签",
+  Name: "名称",
+  Description: "描述",
+  Color: "颜色",
+  TextColor: "文字颜色",
+  Save: "保存",
+  Cancel: "取消",
+  ExportTags: "导出",
+  ImportTags: "导入",
+  ImportResult: "已从 {2} 导入 {0} 个组、{1} 个标签。",
+  ImportFailed: "导入失败：{0}",
+  ClearTags: "全部清除",
+  ClearTagsConfirm: "删除整个标签库？文件名不会更改。",
+  Language: "语言",
+  LanguageSystem: "使用系统设置",
+  LanguageEnglish: "English",
+  LanguageChinese: "简体中文",
+  HideFileExtension: "隐藏文件扩展名",
+  ShowParentFolder: "在搜索结果中显示上级文件夹",
+  SettingsAppearance: "外观",
+  SettingsBehavior: "行为",
+  DropTagHint: "放下以添加标签",
+  ItemsCount: "{0} 个项目",
+  SelectedCount: "已选择 {0} 个",
+};
+
+const dictionaries: Record<"en-US" | "zh-Hans", Record<string, string>> = {
+  "en-US": en,
+  "zh-Hans": zh,
+};
+
+export function translate(
+  language: "en-US" | "zh-Hans",
+  key: string,
+  ...args: (string | number)[]
+): string {
+  const template = dictionaries[language][key] ?? key;
+  return template.replace(/\{(\d+)\}/g, (match, index) => {
+    const value = args[Number(index)];
+    return value === undefined ? match : String(value);
+  });
+}
