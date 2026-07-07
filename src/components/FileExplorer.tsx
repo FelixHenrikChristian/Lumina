@@ -32,6 +32,7 @@ import {
   ChevronRightIcon,
   CloseIcon,
   FilterIcon,
+  FolderIcon,
   ForwardIcon,
   GlyphIcon,
   MinusIcon,
@@ -60,6 +61,9 @@ export function FileExplorer() {
   const errorMessage = useLumina((s) => s.errorMessage);
   const selectedCount = useLumina((s) => s.selectedPaths.size);
   const zoomLevelIndex = useLumina((s) => s.zoomLevelIndex);
+  const trashDelete = useLumina(
+    (s) => s.locations.find((l) => l.id === s.selectedLocationId)?.kind === "native",
+  );
   const cardWidth = CARD_WIDTH_ZOOM_LEVELS[zoomLevelIndex];
 
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -269,7 +273,7 @@ export function FileExplorer() {
       {confirmDelete && (
         <ConfirmDialog
           title={t("Delete")}
-          message={t("DeleteConfirm", selectedCount)}
+          message={t(trashDelete ? "DeleteConfirmTrash" : "DeleteConfirm", selectedCount)}
           confirmLabel={t("Delete")}
           cancelLabel={t("Cancel")}
           danger
@@ -585,6 +589,9 @@ function FileCard({
   const renaming = useLumina((s) => s.renamingPath === file.path);
   const hideExtension = useLumina((s) => s.settings.hideFileExtension);
   const showParent = useLumina((s) => s.settings.showParentFolderInRecursiveSearch);
+  const isNativeLocation = useLumina(
+    (s) => s.locations.find((l) => l.id === s.selectedLocationId)?.kind === "native",
+  );
   const { openMenu } = useOverlay();
 
   const [thumbRef, thumbUrl] = useLazyThumbnail(file);
@@ -610,6 +617,16 @@ function FileCard({
       icon: <OpenIcon />,
       onSelect: () => void useLumina.getState().openFile(file),
     },
+    ...(isNativeLocation
+      ? [
+          {
+            key: "reveal",
+            label: t("ShowInExplorer"),
+            icon: <FolderIcon />,
+            onSelect: () => void useLumina.getState().revealFile(file),
+          },
+        ]
+      : []),
     {
       key: "rename",
       label: t("Rename"),

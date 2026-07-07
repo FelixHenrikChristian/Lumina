@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useLumina, useT } from "../state/store";
-import { isFileSystemAccessSupported } from "../fs/fsaFs";
-import { addDemoLocation, addFsaLocation } from "./locationActions";
+import { addDemoLocation, addRealLocation, canAddRealFolder } from "./locationActions";
 import { useOverlay } from "./overlays";
 import { ConfirmDialog } from "./overlays";
 import { FolderIcon, MoreIcon, PlusIcon, TrashIcon, EditIcon } from "./icons";
@@ -18,7 +17,7 @@ export function LocationSidebar() {
 
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
-  const fsaSupported = isFileSystemAccessSupported();
+  const canAddFolder = canAddRealFolder();
 
   const menuFor = (id: string) => [
     {
@@ -44,9 +43,9 @@ export function LocationSidebar() {
           <button
             type="button"
             className="lg-button icon-only"
-            title={fsaSupported ? t("AddLocation") : t("FsaUnsupported")}
-            disabled={!fsaSupported}
-            onClick={() => void addFsaLocation()}
+            title={canAddFolder ? t("AddLocation") : t("FsaUnsupported")}
+            disabled={!canAddFolder}
+            onClick={() => void addRealLocation()}
           >
             <PlusIcon />
           </button>

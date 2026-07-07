@@ -5,6 +5,7 @@ import {
   isFileSystemAccessSupported,
   saveLocationHandle,
 } from "../fs/fsaFs";
+import { isElectron, nativeApi } from "../fs/electronApi";
 import { translate } from "../core/localization";
 
 /** Adds the in-memory demo library location. */
@@ -20,11 +21,31 @@ export function addDemoLocation(): void {
   state.addLocation(location);
 }
 
+/** True when this build can add real folders (desktop app or FSA browser). */
+export function canAddRealFolder(): boolean {
+  return isElectron() || isFileSystemAccessSupported();
+}
+
 /**
- * Opens the browser directory picker and registers the chosen folder as a
- * managed location. Returns false when the picker was dismissed.
+ * Opens the platform folder picker (native dialog in the desktop app,
+ * File System Access picker in the browser) and registers the chosen
+ * folder as a managed location. Returns false when dismissed.
  */
-export async function addFsaLocation(): Promise<boolean> {
+export async function addRealLocation(): Promise<boolean> {
+  if (isElectron()) {
+    const picked = await nativeApi().pickFolder();
+    if (!picked) return false;
+    const id = newId();
+    useLumina.getState().addLocation({
+      id,
+      name: picked.name,
+      path: `loc:${id}`,
+      kind: "native",
+      nativePath: picked.path,
+    });
+    return true;
+  }
+
   if (!isFileSystemAccessSupported()) return false;
   let handle: FileSystemDirectoryHandle;
   try {

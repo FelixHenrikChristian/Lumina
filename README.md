@@ -54,6 +54,8 @@ degrade to plain frosted blur.
 
 ## Run
 
+Web (any Chromium browser for real folders; demo library works everywhere):
+
 ```powershell
 npm install
 npm run dev      # http://localhost:5173
@@ -61,4 +63,19 @@ npm run build    # type-check + production bundle
 npm run lint
 ```
 
-Use Chrome or Edge to manage real folders; any browser can use the demo library.
+## Desktop app (Electron)
+
+The same renderer ships as a Windows desktop app. In Electron the app gains a
+native filesystem adapter (`src/fs/electronFs.ts` over `electron/main.cjs`):
+no permission prompts, browse any folder via the native picker, Delete goes
+to the **Recycle Bin**, double-click opens files with their **default app**,
+and the context menu gets **Show in File Explorer**.
+
+```powershell
+npm run app:dev    # dev server + Electron window with live reload
+npm run dist       # installer + portable exe in release/
+```
+
+The renderer stays sandboxed (context isolation, no node integration);
+every filesystem operation is an explicit IPC handler validated against
+the folder roots the user has picked.

@@ -35,6 +35,8 @@ import {
   ensurePermission,
   loadLocationHandle,
 } from "../fs/fsaFs";
+import { ElectronFileBrowser } from "../fs/electronFs";
+import { nativeApi } from "../fs/electronApi";
 
 // Browser adapters are kept outside the store: the demo tree must survive
 // re-renders and FSA adapters wrap non-serializable handles.
@@ -46,6 +48,13 @@ async function browserFor(location: Location): Promise<FileBrowserService> {
   let browser: FileBrowserService;
   if (location.kind === "demo") {
     browser = new MemoryFileBrowser(location.path);
+  } else if (location.kind === "native") {
+    if (!location.nativePath) {
+      throw new Error("The saved folder path is missing. Remove and re-add this location.");
+    }
+    // Re-arm the main process allowlist after a restart.
+    await nativeApi().registerRoot(location.nativePath);
+    browser = new ElectronFileBrowser(location.path, location.nativePath);
   } else {
     const handle = await loadLocationHandle(location.id);
     if (!handle) throw new Error("The saved folder handle is missing. Remove and re-add this location.");
@@ -145,6 +154,7 @@ interface LuminaState {
   insertTagIntoFile(file: FileItem, tagName: string, insertionIndex: number): Promise<void>;
   removeTagFromFile(file: FileItem, tagName: string): Promise<void>;
   openFile(file: FileItem): Promise<void>;
+  revealFile(file: FileItem): Promise<void>;
   getBlob(path: string): Promise<Blob | null>;
 }
 
@@ -657,11 +667,29 @@ export const useLumina = create<LuminaState>((set, get) => {
       }
       const browser = await currentBrowser();
       if (!browser) return;
+      // Desktop adapter: hand the file to the platform default app.
+      if (browser.openExternally) {
+        try {
+          await browser.openExternally(file.path);
+        } catch (error) {
+          set({ errorMessage: message(error) });
+        }
+        return;
+      }
       const blob = await browser.getFileBlob(file.path);
       if (!blob) return;
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank");
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    },
+    async revealFile(file) {
+      const browser = await currentBrowser();
+      if (!browser?.revealInShell) return;
+      try {
+        await browser.revealInShell(file.path);
+      } catch (error) {
+        set({ errorMessage: message(error) });
+      }
     },
     async getBlob(path) {
       const browser = await currentBrowser().catch(() => null);

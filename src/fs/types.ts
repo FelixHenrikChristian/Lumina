@@ -22,6 +22,10 @@ export interface FileBrowserService {
   deleteMany(paths: string[]): Promise<void>;
   /** Blob for previews/open; null when unavailable. */
   getFileBlob(path: string): Promise<Blob | null>;
+  /** Opens a file with the platform default app. Desktop adapter only. */
+  openExternally?(path: string): Promise<boolean>;
+  /** Shows the item in the platform file manager. Desktop adapter only. */
+  revealInShell?(path: string): Promise<boolean>;
 }
 
 const INVALID_NAME = /[\\/:*?"<>|]/;

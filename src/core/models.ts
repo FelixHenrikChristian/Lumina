@@ -23,7 +23,9 @@ export interface Location {
   readonly name: string;
   /** Virtual root path, `loc:{id}` — real directory handles live in the FS adapter. */
   readonly path: string;
-  readonly kind: "demo" | "fsa";
+  readonly kind: "demo" | "fsa" | "native";
+  /** Absolute OS path for kind "native" (Electron). */
+  readonly nativePath?: string;
 }
 
 export interface Tag {

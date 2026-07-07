@@ -21,3 +21,6 @@ tests/Lumina.Core.Tests/
 
 # Local tooling
 .claude/
+
+# Electron builder output
+release/
