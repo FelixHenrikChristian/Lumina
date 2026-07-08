@@ -229,6 +229,7 @@ export function GlassDialog({
       }}
     >
       <LiquidGlass
+        className="lg-dialog-anchor"
         cornerRadius={24}
         displacementScale={48}
         blurAmount={0.2}

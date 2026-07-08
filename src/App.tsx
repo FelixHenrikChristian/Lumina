@@ -1,9 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLumina, useT } from "./state/store";
 import { OverlayProvider } from "./components/overlays";
 import { LocationSidebar } from "./components/LocationSidebar";
 import { TagSidebar } from "./components/TagSidebar";
-import { SettingsPanel } from "./components/SettingsPanel";
+import { SettingsDialog } from "./components/SettingsDialog";
 import { FileExplorer } from "./components/FileExplorer";
 import { FolderIcon, SettingsIcon, TagIcon } from "./components/icons";
 import type { SidebarView } from "./core/models";
@@ -11,13 +11,13 @@ import type { SidebarView } from "./core/models";
 const SIDEBAR_TABS: { view: SidebarView; labelKey: string; Icon: typeof FolderIcon }[] = [
   { view: "locations", labelKey: "Locations", Icon: FolderIcon },
   { view: "tags", labelKey: "Tags", Icon: TagIcon },
-  { view: "settings", labelKey: "Settings", Icon: SettingsIcon },
 ];
 
 export default function App() {
   const t = useT();
   const sidebarView = useLumina((s) => s.settings.sidebarView);
   const setSidebarView = useLumina((s) => s.setSidebarView);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Restore the last session's location. FSA locations may still need a
   // permission grant; the explorer surfaces that as an error until the
@@ -35,6 +35,15 @@ export default function App() {
           <div className="sidebar-brand">
             <span className="sidebar-brand-mark" />
             {t("AppTitle")}
+            <button
+              type="button"
+              className="nav-button settings-button"
+              title={t("Settings")}
+              aria-haspopup="dialog"
+              onClick={() => setSettingsOpen(true)}
+            >
+              <SettingsIcon />
+            </button>
           </div>
           <nav className="sidebar-tabs" role="tablist">
             {SIDEBAR_TABS.map(({ view, labelKey, Icon }) => (
@@ -53,12 +62,12 @@ export default function App() {
           </nav>
           {sidebarView === "locations" && <LocationSidebar />}
           {sidebarView === "tags" && <TagSidebar />}
-          {sidebarView === "settings" && <SettingsPanel />}
         </aside>
         <main className="app-main lg-panel">
           <FileExplorer />
         </main>
       </div>
+      {settingsOpen && <SettingsDialog onDismiss={() => setSettingsOpen(false)} />}
     </OverlayProvider>
   );
 }

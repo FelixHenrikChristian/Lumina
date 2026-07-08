@@ -36,7 +36,13 @@ export function saveAppState(state: AppState): void {
 
 export function loadDisplaySettings(): DisplaySettings {
   const settings = { ...DEFAULT_DISPLAY_SETTINGS, ...load(KEYS.settings, {}) };
-  return { ...settings, language: normalizeLanguage(settings.language) };
+  return {
+    ...settings,
+    language: normalizeLanguage(settings.language),
+    // Settings moved from a sidebar tab to its own dialog; older persisted
+    // state may still say "settings".
+    sidebarView: settings.sidebarView === "tags" ? "tags" : "locations",
+  };
 }
 
 export function saveDisplaySettings(settings: DisplaySettings): void {

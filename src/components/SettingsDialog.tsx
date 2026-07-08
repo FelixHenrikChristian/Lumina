@@ -4,19 +4,16 @@ import {
   LANGUAGE_ENGLISH,
   LANGUAGE_SYSTEM,
 } from "../core/localization";
+import { GlassDialog } from "./overlays";
 
-export function SettingsPanel() {
+export function SettingsDialog({ onDismiss }: { onDismiss(): void }) {
   const t = useT();
   const settings = useLumina((s) => s.settings);
   const updateSettings = useLumina((s) => s.updateSettings);
 
   return (
-    <div className="sidebar-pane">
-      <header className="sidebar-header">
-        <h2>{t("Settings")}</h2>
-      </header>
-
-      <div className="sidebar-scroll settings-scroll">
+    <GlassDialog title={t("Settings")} onDismiss={onDismiss} width={440}>
+      <div className="settings-dialog-body">
         <section className="settings-section">
           <h3>{t("SettingsAppearance")}</h3>
           <label className="settings-row">
@@ -57,6 +54,11 @@ export function SettingsPanel() {
           </label>
         </section>
       </div>
-    </div>
+      <div className="lg-dialog-actions">
+        <button type="button" className="lg-button is-primary" onClick={onDismiss}>
+          {t("Close")}
+        </button>
+      </div>
+    </GlassDialog>
   );
 }

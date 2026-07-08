@@ -51,7 +51,7 @@ export interface AppState {
   readonly selectedLocationId: string | null;
 }
 
-export type SidebarView = "locations" | "tags" | "settings";
+export type SidebarView = "locations" | "tags";
 
 export interface DisplaySettings {
   readonly language: string; // 'system' | 'en-US' | 'zh-Hans'
