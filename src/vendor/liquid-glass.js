@@ -252,7 +252,10 @@ var GlassContainer = forwardRef(
                 style: {
                   ...backdropStyle,
                   position: "absolute",
-                  inset: "0"
+                  inset: "0",
+                  borderRadius: "inherit",
+                  overflow: "hidden",
+                  clipPath: `inset(0 round ${cornerRadius}px)`
                 }
               }
             ),
@@ -428,6 +431,11 @@ function LiquidGlass({
     top: baseStyle.top || "50%",
     left: baseStyle.left || "50%"
   };
+  const surfaceClipStyle = {
+    borderRadius: `${cornerRadius}px`,
+    overflow: "hidden",
+    clipPath: `inset(0 round ${cornerRadius}px)`
+  };
   return /* @__PURE__ */ jsxs(Fragment, { children: [
     /* @__PURE__ */ jsx(
       "div",
@@ -437,7 +445,7 @@ function LiquidGlass({
           ...positionStyles,
           height: glassSize.height,
           width: glassSize.width,
-          borderRadius: `${cornerRadius}px`,
+          ...surfaceClipStyle,
           transform: baseStyle.transform,
           transition: baseStyle.transition
         }
@@ -451,7 +459,7 @@ function LiquidGlass({
           ...positionStyles,
           height: glassSize.height,
           width: glassSize.width,
-          borderRadius: `${cornerRadius}px`,
+          ...surfaceClipStyle,
           transform: baseStyle.transform,
           transition: baseStyle.transition
         }
@@ -489,7 +497,7 @@ function LiquidGlass({
           ...positionStyles,
           height: glassSize.height,
           width: glassSize.width,
-          borderRadius: `${cornerRadius}px`,
+          ...surfaceClipStyle,
           transform: baseStyle.transform,
           transition: baseStyle.transition,
           pointerEvents: "none",
@@ -517,7 +525,7 @@ function LiquidGlass({
           ...positionStyles,
           height: glassSize.height,
           width: glassSize.width,
-          borderRadius: `${cornerRadius}px`,
+          ...surfaceClipStyle,
           transform: baseStyle.transform,
           transition: baseStyle.transition,
           pointerEvents: "none",
@@ -545,7 +553,7 @@ function LiquidGlass({
             ...positionStyles,
             height: glassSize.height,
             width: glassSize.width + 1,
-            borderRadius: `${cornerRadius}px`,
+            ...surfaceClipStyle,
             transform: baseStyle.transform,
             pointerEvents: "none",
             transition: "all 0.2s ease-out",
@@ -562,7 +570,7 @@ function LiquidGlass({
             ...positionStyles,
             height: glassSize.height,
             width: glassSize.width + 1,
-            borderRadius: `${cornerRadius}px`,
+            ...surfaceClipStyle,
             transform: baseStyle.transform,
             pointerEvents: "none",
             transition: "all 0.2s ease-out",
@@ -579,7 +587,7 @@ function LiquidGlass({
             ...baseStyle,
             height: glassSize.height,
             width: glassSize.width + 1,
-            borderRadius: `${cornerRadius}px`,
+            ...surfaceClipStyle,
             position: baseStyle.position,
             top: baseStyle.top,
             left: baseStyle.left,

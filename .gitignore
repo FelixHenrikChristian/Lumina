@@ -21,6 +21,8 @@ tests/Lumina.Core.Tests/
 
 # Local tooling
 .claude/
+.vite-temp/
+vite.visual.config.mjs
 
 # Electron builder output
 release/
