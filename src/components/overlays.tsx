@@ -9,7 +9,8 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import LiquidGlass from "liquid-glass-react";
+import LiquidGlass from "../vendor/liquid-glass";
+import { useLumina } from "../state/store";
 
 // ---------------------------------------------------------------------------
 // Context menu / popover: one open surface at a time, closed on outside
@@ -210,6 +211,8 @@ export function GlassDialog({
   children: ReactNode;
   width?: number;
 }) {
+  const glass = useLumina((s) => s.settings.glass);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -229,13 +232,19 @@ export function GlassDialog({
       }}
     >
       <LiquidGlass
-        className="lg-dialog-anchor"
-        cornerRadius={24}
-        displacementScale={48}
-        blurAmount={0.2}
-        saturation={150}
-        aberrationIntensity={1.5}
-        elasticity={0.05}
+        // Positioning must go through the style prop: the library renders
+        // its tint/shine layers as siblings that copy position/top/left
+        // from here — a CSS class on the root would leave them stranded.
+        style={{ position: "absolute", top: "50%", left: "50%" }}
+        mode={glass.mode}
+        cornerRadius={glass.cornerRadius}
+        displacementScale={glass.displacementScale}
+        blurAmount={glass.blurAmount}
+        saturation={glass.saturation}
+        aberrationIntensity={glass.aberrationIntensity}
+        elasticity={0}
+        animate={false} // dialogs are static: no hover motion, no transitions
+        overLight={glass.overLight}
         padding="0px"
       >
         <div

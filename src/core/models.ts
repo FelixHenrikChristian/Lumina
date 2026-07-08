@@ -53,12 +53,70 @@ export interface AppState {
 
 export type SidebarView = "locations" | "tags";
 
+export type GlassMode = "standard" | "polar" | "prominent" | "shader";
+
+/** liquid-glass-react surface tuning, user-editable in Settings. */
+export interface GlassConfig {
+  readonly mode: GlassMode;
+  readonly displacementScale: number;
+  readonly blurAmount: number;
+  readonly saturation: number;
+  readonly aberrationIntensity: number;
+  readonly elasticity: number;
+  readonly cornerRadius: number;
+  readonly overLight: boolean;
+}
+
+export const DEFAULT_GLASS_CONFIG: GlassConfig = {
+  mode: "standard",
+  displacementScale: 64,
+  blurAmount: 0.12,
+  saturation: 140,
+  aberrationIntensity: 2,
+  elasticity: 0.15,
+  cornerRadius: 24,
+  overLight: false,
+};
+
+export const GLASS_MODES: readonly GlassMode[] = [
+  "standard",
+  "polar",
+  "prominent",
+  "shader",
+];
+
+/**
+ * Persisted glass configs may be partial (older versions) or hand-edited;
+ * out-of-range numbers just look odd, but an unknown mode makes
+ * liquid-glass-react throw. Clamp everything to the ranges the settings
+ * UI offers.
+ */
+export function normalizeGlassConfig(value: Partial<GlassConfig> | undefined): GlassConfig {
+  const d = DEFAULT_GLASS_CONFIG;
+  const raw = value ?? {};
+  const num = (v: unknown, min: number, max: number, fallback: number) =>
+    typeof v === "number" && Number.isFinite(v)
+      ? Math.min(Math.max(v, min), max)
+      : fallback;
+  return {
+    mode: GLASS_MODES.includes(raw.mode as GlassMode) ? (raw.mode as GlassMode) : d.mode,
+    displacementScale: num(raw.displacementScale, 0, 200, d.displacementScale),
+    blurAmount: num(raw.blurAmount, 0, 1, d.blurAmount),
+    saturation: num(raw.saturation, 100, 300, d.saturation),
+    aberrationIntensity: num(raw.aberrationIntensity, 0, 20, d.aberrationIntensity),
+    elasticity: num(raw.elasticity, 0, 1, d.elasticity),
+    cornerRadius: num(raw.cornerRadius, 0, 100, d.cornerRadius),
+    overLight: typeof raw.overLight === "boolean" ? raw.overLight : d.overLight,
+  };
+}
+
 export interface DisplaySettings {
   readonly language: string; // 'system' | 'en-US' | 'zh-Hans'
   readonly hideFileExtension: boolean;
   readonly showParentFolderInRecursiveSearch: boolean;
   readonly gridSize: number; // zoom level index 0..5
   readonly sidebarView: SidebarView;
+  readonly glass: GlassConfig;
 }
 
 export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
@@ -67,6 +125,7 @@ export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
   showParentFolderInRecursiveSearch: true,
   gridSize: 2,
   sidebarView: "locations",
+  glass: DEFAULT_GLASS_CONFIG,
 };
 
 export interface FileItem {
