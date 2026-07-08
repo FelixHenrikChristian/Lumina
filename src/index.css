@@ -1193,10 +1193,8 @@ select.lg-input option {
   border: 1px solid var(--lg-stroke);
   overflow: hidden;
   background:
-    radial-gradient(45% 70% at 20% 25%, rgba(255, 158, 88, 0.85), transparent 70%),
-    radial-gradient(50% 65% at 78% 20%, rgba(94, 129, 255, 0.85), transparent 70%),
-    radial-gradient(55% 70% at 65% 85%, rgba(46, 232, 187, 0.7), transparent 72%),
-    radial-gradient(40% 55% at 22% 80%, rgba(255, 96, 168, 0.75), transparent 70%),
+    linear-gradient(rgba(4, 8, 20, 0.08), rgba(4, 8, 20, 0.18)),
+    url("./assets/glass-preview-landscape.jpg") center / cover no-repeat,
     linear-gradient(150deg, #202a4d, #101a33);
 }
 
@@ -1204,8 +1202,10 @@ select.lg-input option {
   content: "";
   position: absolute;
   inset: 0;
+  pointer-events: none;
   background-image:
-    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.16) 0 2px, transparent 2px 26px);
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.14) 0 1px, transparent 1px 22px);
+  mix-blend-mode: overlay;
 }
 
 .glass-demo-card {
