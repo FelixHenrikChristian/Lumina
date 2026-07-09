@@ -1053,6 +1053,11 @@ select.lg-input option {
 /* File cards                                                         */
 
 .file-card {
+  /* Tracks stretch beyond --card-width to absorb leftover row space; the
+     card keeps its zoom width and centers so gaps grow evenly instead of
+     piling up at the right edge. */
+  width: min(var(--card-width, 100%), 100%);
+  justify-self: center;
   display: flex;
   flex-direction: column;
   border-radius: var(--lg-radius-md);

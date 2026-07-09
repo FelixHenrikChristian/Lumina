@@ -3,6 +3,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type DragEvent,
   type KeyboardEvent,
   type PointerEvent,
@@ -236,12 +237,17 @@ export function FileExplorer() {
       <div
         ref={gridRef}
         className="file-grid"
-        style={{
-          // Fixed tracks like the WinUI grid: intrinsic row sizing of
-          // column-flex cards is unreliable in Chromium.
-          gridTemplateColumns: `repeat(auto-fill, min(${cardWidth}px, 100%))`,
-          gridAutoRows: `${cardHeightForWidth(cardWidth)}px`,
-        }}
+        style={
+          {
+            // Explorer-style distribution: tracks flex to share leftover row
+            // space while the card itself stays at --card-width, centered in
+            // its track (fixed rows: intrinsic row sizing of column-flex
+            // cards is unreliable in Chromium).
+            "--card-width": `${cardWidth}px`,
+            gridTemplateColumns: `repeat(auto-fill, minmax(min(${cardWidth}px, 100%), 1fr))`,
+            gridAutoRows: `${cardHeightForWidth(cardWidth)}px`,
+          } as CSSProperties
+        }
         tabIndex={0}
         role="grid"
         onKeyDown={onGridKeyDown}
