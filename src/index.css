@@ -234,29 +234,99 @@ select.lg-input option {
 /* App shell                                                          */
 
 .app-shell {
-  display: grid;
-  grid-template-columns: 300px 1fr;
-  gap: 16px;
+  display: flex;
   height: 100%;
   padding: 16px;
-}
-
-@media (max-width: 900px) {
-  .app-shell {
-    grid-template-columns: 240px 1fr;
-  }
 }
 
 .app-sidebar {
   display: flex;
   flex-direction: column;
+  flex: none;
+  width: 300px;
   min-height: 0;
   padding: 16px 14px 12px;
+  transition:
+    width 0.28s ease,
+    padding 0.28s ease,
+    opacity 0.16s ease 0.08s,
+    visibility 0s linear 0s;
+}
+
+/* Children keep the expanded content width (sidebar width minus its
+   horizontal padding) so collapsing clips them instead of re-wrapping. */
+.app-sidebar > * {
+  width: 272px;
+}
+
+.sidebar-collapsed .app-sidebar {
+  width: 0;
+  padding-left: 0;
+  padding-right: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    width 0.28s ease,
+    padding 0.28s ease,
+    opacity 0.16s ease,
+    visibility 0s linear 0.28s;
+}
+
+@media (max-width: 900px) {
+  .app-sidebar {
+    width: 240px;
+  }
+
+  .app-sidebar > * {
+    width: 212px;
+  }
+}
+
+/* The seam between the panels doubles as the sidebar toggle. */
+.shell-handle {
+  flex: none;
+  width: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--lg-text-faint);
+  cursor: pointer;
+}
+
+.shell-handle:hover,
+.shell-handle:focus-visible {
+  color: var(--lg-text);
+}
+
+.shell-handle:focus-visible {
+  outline: none;
+}
+
+.shell-handle-grip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 44px;
+  border-radius: 999px;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.shell-handle:hover .shell-handle-grip {
+  background: var(--lg-glass-tint-strong);
+}
+
+.shell-handle:focus-visible .shell-handle-grip {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--lg-accent) 55%, transparent);
 }
 
 .app-main {
   display: flex;
   flex-direction: column;
+  flex: 1;
   min-width: 0;
   min-height: 0;
 }

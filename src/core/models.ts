@@ -130,6 +130,7 @@ export interface DisplaySettings {
   readonly showParentFolderInRecursiveSearch: boolean;
   readonly gridSize: number; // zoom level index 0..5
   readonly sidebarView: SidebarView;
+  readonly sidebarCollapsed: boolean;
   readonly glass: GlassConfig;
   readonly customWallpaper: CustomWallpaper | null;
 }
@@ -140,6 +141,7 @@ export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
   showParentFolderInRecursiveSearch: true,
   gridSize: 2,
   sidebarView: "locations",
+  sidebarCollapsed: false,
   glass: DEFAULT_GLASS_CONFIG,
   customWallpaper: null,
 };

@@ -89,6 +89,7 @@ interface LuminaState {
   language: "en-US" | "zh-Hans";
   updateSettings(patch: Partial<DisplaySettings>): void;
   setSidebarView(view: SidebarView): void;
+  toggleSidebar(): void;
 
   // locations
   locations: Location[];
@@ -311,6 +312,9 @@ export const useLumina = create<LuminaState>((set, get) => {
     },
     setSidebarView(view) {
       get().updateSettings({ sidebarView: view });
+    },
+    toggleSidebar() {
+      get().updateSettings({ sidebarCollapsed: !get().settings.sidebarCollapsed });
     },
 
     locations: initialLocations,

@@ -5,7 +5,13 @@ import { LocationSidebar } from "./components/LocationSidebar";
 import { TagSidebar } from "./components/TagSidebar";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { FileExplorer } from "./components/FileExplorer";
-import { FolderIcon, SettingsIcon, TagIcon } from "./components/icons";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  FolderIcon,
+  SettingsIcon,
+  TagIcon,
+} from "./components/icons";
 import type { SidebarView } from "./core/models";
 
 const SIDEBAR_TABS: { view: SidebarView; labelKey: string; Icon: typeof FolderIcon }[] = [
@@ -16,8 +22,10 @@ const SIDEBAR_TABS: { view: SidebarView; labelKey: string; Icon: typeof FolderIc
 export default function App() {
   const t = useT();
   const sidebarView = useLumina((s) => s.settings.sidebarView);
+  const sidebarCollapsed = useLumina((s) => s.settings.sidebarCollapsed);
   const customWallpaper = useLumina((s) => s.settings.customWallpaper);
   const setSidebarView = useLumina((s) => s.setSidebarView);
+  const toggleSidebar = useLumina((s) => s.toggleSidebar);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const wallpaperStyle = customWallpaper
     ? ({
@@ -33,6 +41,26 @@ export default function App() {
     if (selectedLocationId) void selectLocation(selectedLocationId);
   }, []);
 
+  // Ctrl+B mirrors the seam handle button.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.ctrlKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        !event.shiftKey &&
+        event.key.toLowerCase() === "b"
+      ) {
+        event.preventDefault();
+        useLumina.getState().toggleSidebar();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  const sidebarToggleLabel = t(sidebarCollapsed ? "ShowSidebar" : "HideSidebar");
+
   return (
     <OverlayProvider>
       <div
@@ -40,8 +68,8 @@ export default function App() {
         style={wallpaperStyle}
         aria-hidden="true"
       />
-      <div className="app-shell">
-        <aside className="app-sidebar lg-panel">
+      <div className={`app-shell${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
+        <aside id="app-sidebar" className="app-sidebar lg-panel" inert={sidebarCollapsed}>
           <div className="sidebar-brand">
             <span className="sidebar-brand-mark" />
             {t("AppTitle")}
@@ -73,6 +101,19 @@ export default function App() {
           {sidebarView === "locations" && <LocationSidebar />}
           {sidebarView === "tags" && <TagSidebar />}
         </aside>
+        <button
+          type="button"
+          className="shell-handle"
+          title={`${sidebarToggleLabel} (Ctrl+B)`}
+          aria-label={sidebarToggleLabel}
+          aria-expanded={!sidebarCollapsed}
+          aria-controls="app-sidebar"
+          onClick={toggleSidebar}
+        >
+          <span className="shell-handle-grip">
+            {sidebarCollapsed ? <ChevronRightIcon size={13} /> : <ChevronLeftIcon size={13} />}
+          </span>
+        </button>
         <main className="app-main lg-panel">
           <FileExplorer />
         </main>

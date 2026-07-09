@@ -141,6 +141,12 @@ export const ChevronRightIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const ChevronLeftIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m15 6-6 6 6 6" />
+  </Icon>
+);
+
 export const MoreIcon = (p: IconProps) => (
   <Icon {...p}>
     <circle cx="5" cy="12" r="1.3" fill="currentColor" stroke="none" />
