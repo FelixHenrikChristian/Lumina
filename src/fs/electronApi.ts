@@ -1,5 +1,7 @@
 // Typed view of the API exposed by electron/preload.cjs. Present only when
 // the app runs inside Electron.
+import type { CustomWallpaper } from "../core/models";
+
 export interface NativeEntry {
   readonly name: string;
   readonly path: string; // absolute Windows path
@@ -10,6 +12,7 @@ export interface NativeEntry {
 }
 
 export interface LuminaNativeApi {
+  chooseWallpaper(): Promise<CustomWallpaper | null>;
   pickFolder(): Promise<{ path: string; name: string } | null>;
   registerRoot(rootPath: string): Promise<boolean>;
   list(dirPath: string): Promise<NativeEntry[]>;

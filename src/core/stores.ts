@@ -1,5 +1,9 @@
 import type { AppState, DisplaySettings, Location, TagGroup } from "./models";
-import { DEFAULT_DISPLAY_SETTINGS, normalizeGlassConfig } from "./models";
+import {
+  DEFAULT_DISPLAY_SETTINGS,
+  normalizeCustomWallpaper,
+  normalizeGlassConfig,
+} from "./models";
 import { normalizeLanguage } from "./localization";
 
 // Web replacement for the %LocalAppData%\Lumina JSON stores. Same camelCase
@@ -44,6 +48,7 @@ export function loadDisplaySettings(): DisplaySettings {
     sidebarView: settings.sidebarView === "tags" ? "tags" : "locations",
     // Clamp persisted glass configs (partial or hand-edited) to valid ranges.
     glass: normalizeGlassConfig(settings.glass),
+    customWallpaper: normalizeCustomWallpaper(settings.customWallpaper),
   };
 }
 

@@ -61,6 +61,14 @@ body {
   mix-blend-mode: overlay;
 }
 
+.lg-wallpaper.has-custom-wallpaper {
+  background:
+    linear-gradient(rgba(4, 8, 20, 0.42), rgba(4, 8, 20, 0.62)),
+    var(--lumina-wallpaper-image) center / cover no-repeat,
+    linear-gradient(160deg, var(--lg-bg-1), var(--lg-bg-0) 60%);
+  animation: none;
+}
+
 @keyframes lg-drift {
   from {
     transform: translate3d(-1.5%, -1%, 0) scale(1.02);
@@ -1347,6 +1355,43 @@ select.lg-input option {
   padding: 8px 6px;
   font-size: 13px;
   cursor: pointer;
+}
+
+.settings-row-value {
+  min-width: 0;
+  max-width: 260px;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--lg-text-dim);
+}
+
+.wallpaper-row {
+  cursor: default;
+}
+
+.settings-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 6px;
+}
+
+.settings-note,
+.settings-error {
+  margin: 4px 6px 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.settings-note {
+  color: var(--lg-text-faint);
+}
+
+.settings-error {
+  color: var(--lg-danger);
 }
 
 .settings-row select {

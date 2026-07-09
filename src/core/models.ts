@@ -67,6 +67,11 @@ export interface GlassConfig {
   readonly overLight: boolean;
 }
 
+export interface CustomWallpaper {
+  readonly url: string;
+  readonly name: string;
+}
+
 export const DEFAULT_GLASS_CONFIG: GlassConfig = {
   mode: "standard",
   displacementScale: 64,
@@ -110,6 +115,15 @@ export function normalizeGlassConfig(value: Partial<GlassConfig> | undefined): G
   };
 }
 
+export function normalizeCustomWallpaper(value: unknown): CustomWallpaper | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Partial<CustomWallpaper>;
+  const url = typeof raw.url === "string" ? raw.url.trim() : "";
+  const name = typeof raw.name === "string" ? raw.name.trim() : "";
+  if (!url || !name) return null;
+  return { url, name };
+}
+
 export interface DisplaySettings {
   readonly language: string; // 'system' | 'en-US' | 'zh-Hans'
   readonly hideFileExtension: boolean;
@@ -117,6 +131,7 @@ export interface DisplaySettings {
   readonly gridSize: number; // zoom level index 0..5
   readonly sidebarView: SidebarView;
   readonly glass: GlassConfig;
+  readonly customWallpaper: CustomWallpaper | null;
 }
 
 export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
@@ -126,6 +141,7 @@ export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
   gridSize: 2,
   sidebarView: "locations",
   glass: DEFAULT_GLASS_CONFIG,
+  customWallpaper: null,
 };
 
 export interface FileItem {

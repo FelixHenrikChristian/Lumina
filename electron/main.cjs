@@ -2,11 +2,22 @@
 // (contextIsolation, no nodeIntegration); every filesystem capability is
 // an explicit IPC handler here, and paths are validated against roots the
 // user picked (or re-registered from saved locations) before any fs call.
-const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } = require("electron");
+const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 
 const allowedRoots = new Set(); // canonical lower-case absolute paths
+const wallpaperExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif"]);
+const wallpaperProtocol = "lumina-wallpaper";
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: wallpaperProtocol,
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+  },
+]);
 
 function canonical(p) {
   return path.resolve(p).replace(/[\\/]+$/, "");
@@ -28,6 +39,50 @@ function assertAllowed(p) {
     throw new Error(`Path is outside the registered locations: ${p}`);
   }
   return canonical(p);
+}
+
+function wallpaperDir() {
+  return path.join(app.getPath("userData"), "wallpapers");
+}
+
+function wallpaperUrlFor(fileName) {
+  return `${wallpaperProtocol}://image/${encodeURIComponent(fileName)}`;
+}
+
+function wallpaperPathFromUrl(rawUrl) {
+  const parsed = new URL(rawUrl);
+  const fileName = decodeURIComponent(parsed.pathname.replace(/^\/+/, ""));
+  if (!fileName || path.basename(fileName) !== fileName) {
+    throw new Error("Invalid wallpaper URL.");
+  }
+  return path.join(wallpaperDir(), fileName);
+}
+
+function registerWallpaperProtocol() {
+  protocol.handle(wallpaperProtocol, async (request) => {
+    const filePath = wallpaperPathFromUrl(request.url);
+    return net.fetch(pathToFileURL(filePath).toString());
+  });
+}
+
+async function copyWallpaper(sourcePath) {
+  const ext = path.extname(sourcePath).toLowerCase();
+  if (!wallpaperExtensions.has(ext)) {
+    throw new Error("Unsupported image format.");
+  }
+  const stat = await fs.stat(sourcePath);
+  if (!stat.isFile()) {
+    throw new Error("The selected wallpaper is not a file.");
+  }
+  const destinationDir = wallpaperDir();
+  await fs.mkdir(destinationDir, { recursive: true });
+  const fileName = `${Date.now()}-${crypto.randomUUID()}${ext}`;
+  const destination = path.join(destinationDir, fileName);
+  await fs.copyFile(sourcePath, destination);
+  return {
+    url: wallpaperUrlFor(fileName),
+    name: path.basename(sourcePath),
+  };
 }
 
 async function entryInfo(dirPath, dirent, relativeParent) {
@@ -54,6 +109,21 @@ async function entryInfo(dirPath, dirent, relativeParent) {
 }
 
 function registerIpc() {
+  ipcMain.handle("lumina:chooseWallpaper", async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const result = await dialog.showOpenDialog(win, {
+      properties: ["openFile"],
+      filters: [
+        {
+          name: "Images",
+          extensions: ["jpg", "jpeg", "png", "webp", "gif", "bmp", "avif"],
+        },
+      ],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return copyWallpaper(result.filePaths[0]);
+  });
+
   ipcMain.handle("lumina:pickFolder", async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const result = await dialog.showOpenDialog(win, {
@@ -216,6 +286,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  registerWallpaperProtocol();
   registerIpc();
   createWindow();
   app.on("activate", () => {

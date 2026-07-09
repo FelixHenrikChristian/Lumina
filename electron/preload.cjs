@@ -3,6 +3,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("luminaNative", {
+  chooseWallpaper: () => ipcRenderer.invoke("lumina:chooseWallpaper"),
   pickFolder: () => ipcRenderer.invoke("lumina:pickFolder"),
   registerRoot: (rootPath) => ipcRenderer.invoke("lumina:registerRoot", rootPath),
   list: (dirPath) => ipcRenderer.invoke("lumina:list", dirPath),

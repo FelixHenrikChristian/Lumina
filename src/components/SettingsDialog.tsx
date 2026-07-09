@@ -8,6 +8,7 @@ import {
 } from "../core/localization";
 import type { GlassConfig, GlassMode } from "../core/models";
 import { DEFAULT_GLASS_CONFIG } from "../core/models";
+import { isElectron, nativeApi } from "../fs/electronApi";
 import { GlassDialog } from "./overlays";
 import { FolderIcon, RefreshIcon, SettingsIcon, TagIcon } from "./icons";
 
@@ -60,21 +61,73 @@ function AppearancePane() {
   const t = useT();
   const settings = useLumina((s) => s.settings);
   const updateSettings = useLumina((s) => s.updateSettings);
+  const [wallpaperError, setWallpaperError] = useState<string | null>(null);
+  const canChooseWallpaper =
+    isElectron() && typeof window.luminaNative?.chooseWallpaper === "function";
+
+  const chooseWallpaper = async () => {
+    if (!canChooseWallpaper) return;
+    setWallpaperError(null);
+    try {
+      const wallpaper = await nativeApi().chooseWallpaper();
+      if (wallpaper) updateSettings({ customWallpaper: wallpaper });
+    } catch (error) {
+      setWallpaperError(t("WallpaperChooseFailed", message(error)));
+    }
+  };
+
   return (
-    <section className="settings-section">
-      <label className="settings-row">
-        <span>{t("Language")}</span>
-        <select
-          className="lg-input"
-          value={settings.language}
-          onChange={(e) => updateSettings({ language: e.currentTarget.value })}
-        >
-          <option value={LANGUAGE_SYSTEM}>{t("LanguageSystem")}</option>
-          <option value={LANGUAGE_ENGLISH}>{t("LanguageEnglish")}</option>
-          <option value={LANGUAGE_CHINESE}>{t("LanguageChinese")}</option>
-        </select>
-      </label>
-    </section>
+    <div className="settings-dialog-body">
+      <section className="settings-section">
+        <label className="settings-row">
+          <span>{t("Language")}</span>
+          <select
+            className="lg-input"
+            value={settings.language}
+            onChange={(e) => updateSettings({ language: e.currentTarget.value })}
+          >
+            <option value={LANGUAGE_SYSTEM}>{t("LanguageSystem")}</option>
+            <option value={LANGUAGE_ENGLISH}>{t("LanguageEnglish")}</option>
+            <option value={LANGUAGE_CHINESE}>{t("LanguageChinese")}</option>
+          </select>
+        </label>
+      </section>
+
+      <section className="settings-section">
+        <h3>{t("Background")}</h3>
+        <div className="settings-row wallpaper-row">
+          <span>{t("BackgroundImage")}</span>
+          <span className="settings-row-value">
+            {settings.customWallpaper?.name ?? t("BackgroundDefault")}
+          </span>
+        </div>
+        <div className="settings-action-row">
+          <button
+            type="button"
+            className="lg-button"
+            disabled={!canChooseWallpaper}
+            onClick={() => void chooseWallpaper()}
+          >
+            {t("ChooseBackgroundImage")}
+          </button>
+          <button
+            type="button"
+            className="lg-button"
+            disabled={!settings.customWallpaper}
+            onClick={() => {
+              setWallpaperError(null);
+              updateSettings({ customWallpaper: null });
+            }}
+          >
+            {t("RestoreDefaultBackground")}
+          </button>
+        </div>
+        {!canChooseWallpaper && (
+          <p className="settings-note">{t("DesktopWallpaperOnly")}</p>
+        )}
+        {wallpaperError && <p className="settings-error">{wallpaperError}</p>}
+      </section>
+    </div>
   );
 }
 
@@ -305,4 +358,8 @@ function GlassSlider({
       <span className="glass-slider-value">{format(value)}</span>
     </label>
   );
+}
+
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

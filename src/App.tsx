@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useLumina, useT } from "./state/store";
 import { OverlayProvider } from "./components/overlays";
 import { LocationSidebar } from "./components/LocationSidebar";
@@ -16,8 +16,14 @@ const SIDEBAR_TABS: { view: SidebarView; labelKey: string; Icon: typeof FolderIc
 export default function App() {
   const t = useT();
   const sidebarView = useLumina((s) => s.settings.sidebarView);
+  const customWallpaper = useLumina((s) => s.settings.customWallpaper);
   const setSidebarView = useLumina((s) => s.setSidebarView);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const wallpaperStyle = customWallpaper
+    ? ({
+        "--lumina-wallpaper-image": `url(${JSON.stringify(customWallpaper.url)})`,
+      } as CSSProperties)
+    : undefined;
 
   // Restore the last session's location. FSA locations may still need a
   // permission grant; the explorer surfaces that as an error until the
@@ -29,7 +35,11 @@ export default function App() {
 
   return (
     <OverlayProvider>
-      <div className="lg-wallpaper" aria-hidden="true" />
+      <div
+        className={`lg-wallpaper${customWallpaper ? " has-custom-wallpaper" : ""}`}
+        style={wallpaperStyle}
+        aria-hidden="true"
+      />
       <div className="app-shell">
         <aside className="app-sidebar lg-panel">
           <div className="sidebar-brand">
