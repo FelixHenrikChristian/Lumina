@@ -1,81 +1,101 @@
-# Lumina (React)
+# Lumina
 
-A web rewrite of [Lumina](../Lumina), the WinUI 3 tag-oriented file manager, restyled
-with a **liquid glass** theme. Tags live in filenames as a leading bracket group
-(`[tag1 tag2] name.ext`), so the library stays portable and database-free — the same
-convention as the WinUI app and TagAnything/TagSpaces.
+Lumina is a local, tag-oriented file manager for Windows with a liquid-glass
+interface. It stores tags as a leading group in each filename, for example
+`[work urgent] report.pdf`, so tagged files remain portable and do not depend on
+a separate database.
 
-## Liquid glass
+## Download
 
-The theme uses [`liquid-glass-react`](https://github.com/rdev/liquid-glass-react)
-(rdev) for hero surfaces — dialogs render on a `LiquidGlass` panel with displacement,
-refraction, and chromatic aberration. Large structural panels (sidebar, explorer,
-menus, popovers) use a matching CSS glass system (`backdrop-filter` blur/saturation,
-inner highlights, aurora wallpaper) so the whole UI reads as one material without
-paying the mouse-tracking cost on every element.
+Download the current release from
+[GitHub Releases](https://github.com/FelixHenrikChristian/Lumina/releases/latest).
+Lumina supports 64-bit Windows 10 and Windows 11.
 
-> Why not [`@callstack/liquid-glass`](https://github.com/callstack/liquid-glass)?
-> It is a React Native binding to the native iOS 26 Liquid Glass material (requires
-> Xcode 26), so it cannot run in a browser or on Windows.
+- `Lumina-Setup-1.0.0.exe` installs Lumina, adds Start menu and desktop shortcuts,
+  and includes an uninstaller.
+- `Lumina-Portable-1.0.0.exe` runs without installation. Preferences are still
+  stored in the current Windows user's application-data directory.
+- `SHA256SUMS.txt` contains checksums for both executables.
 
-The displacement effect is fully visible in Chromium (Chrome/Edge); Safari/Firefox
-degrade to plain frosted blur.
+> [!WARNING]
+> Lumina 1.0.0 executables are unsigned. Windows may show an Unknown Publisher or
+> SmartScreen warning. Download them only from the official Releases page and
+> verify the SHA-256 checksum before running them.
+
+```powershell
+Get-FileHash .\Lumina-Setup-1.0.0.exe -Algorithm SHA256
+```
 
 ## Features
 
-- **Locations** — manage real folders via the File System Access API (Chrome/Edge;
-  handles persist in IndexedDB and permissions are re-requested on return), or an
-  in-memory **demo library** that works in any browser.
-- **File explorer** — zoomable card grid (Ctrl+wheel or toolbar), thumbnails for
-  images, name/modified/type/size sorting (directories first), breadcrumbs,
-  back/forward/up history, folder creation, rename (F2), delete, recursive search
-  with parent-folder badges, and the full keyboard model from
-  [`docs/file-explorer-input.md`](../Lumina/docs/file-explorer-input.md)
-  (arrows by row/column, Shift/Ctrl selection, Ctrl+A, Home/End, Enter, F5,
-  Alt+arrows, Backspace, Ctrl+F).
-- **Tags** — grouped tag library with colors, drag chips onto files to tag them
-  (the filename is rewritten), drag chips between files to move tags, right-click
-  to remove; filter the explorer by any tag combination; TagSpaces-compatible
-  JSON import/export.
-- **Settings** — English/简体中文 (or follow the system), hide file extensions,
-  toggle parent-folder badges. Everything persists to `localStorage`
-  (`lumina.*` keys), mirroring the WinUI JSON stores.
+- Native folder picker and local Windows filesystem access.
+- Grid view with image and Windows Shell video thumbnails.
+- Breadcrumbs, navigation history, recursive search, sorting, zoom, multi-select,
+  and keyboard navigation.
+- Folder creation, rename, copy, move, paste, undo/redo paste, Recycle Bin, open
+  with the default application, and reveal in File Explorer.
+- Tag groups, tag colors, drag-and-drop tagging, multi-tag filtering, and
+  TagSpaces-style import/export.
+- English and Simplified Chinese interfaces.
+- Custom wallpapers and configurable liquid-glass appearance.
 
-## Project layout
+Lumina processes files locally and does not include telemetry, accounts, cloud
+storage, advertising, crash reporting, or automatic updates. See
+[PRIVACY.md](PRIVACY.md) for details.
 
-- `src/core` — UI-independent port of `Lumina.Core`: models, tag parser, sorting,
-  localization, stores, TagSpaces transfer.
-- `src/fs` — `FileBrowserService` abstraction with File System Access and
-  in-memory demo adapters.
-- `src/state` — zustand store mirroring the WinUI ViewModels (navigation history,
-  selection/focus/anchor, filters, file operations).
-- `src/components` — the liquid-glass UI: sidebars, explorer grid, dialogs,
-  menus, icons.
+## Development
 
-## Run
+Requirements:
 
-Web (any Chromium browser for real folders; demo library works everywhere):
+- Windows 10 or Windows 11
+- Node.js 22.12 or newer
+- npm
+
+Install the locked dependencies and run the checks:
 
 ```powershell
-npm install
-npm run dev      # http://localhost:5173
-npm run build    # type-check + production bundle
+npm ci
+npm test
 npm run lint
+npm run build
+npm run app:smoke
 ```
 
-## Desktop app (Electron)
-
-The same renderer ships as a Windows desktop app. In Electron the app gains a
-native filesystem adapter (`src/fs/electronFs.ts` over `electron/main.cjs`):
-no permission prompts, browse any folder via the native picker, Delete goes
-to the **Recycle Bin**, double-click opens files with their **default app**,
-and the context menu gets **Show in File Explorer**.
+Useful commands:
 
 ```powershell
-npm run app:dev    # dev server + Electron window with live reload
-npm run dist       # installer + portable exe in release/
+npm run dev       # browser development server
+npm run app:dev   # Vite + Electron with live reload
+npm run dist      # production build, installer, and portable executable
 ```
 
-The renderer stays sandboxed (context isolation, no node integration);
-every filesystem operation is an explicit IPC handler validated against
-the folder roots the user has picked.
+The Electron renderer uses context isolation with Node.js integration disabled.
+Native filesystem operations are exposed through explicit IPC handlers and are
+validated against folder roots selected by the user.
+
+## Release process
+
+The release workflow runs on a `vX.Y.Z` tag. It verifies that the tag matches
+`package.json`, runs tests and the desktop smoke test on a GitHub-hosted Windows
+runner, builds both executables, generates checksums, and creates a **Draft Release**.
+It never publishes the release automatically.
+
+For Lumina 1.0.0:
+
+```powershell
+git tag -a v1.0.0 -m "Lumina 1.0.0"
+git push origin v1.0.0
+```
+
+After the Action succeeds, open the generated draft on GitHub, check the release
+notes and all three attachments, then click **Publish release**.
+
+## Project information
+
+- Changes: [CHANGELOG.md](CHANGELOG.md)
+- Support: [SUPPORT.md](SUPPORT.md)
+- Security: [SECURITY.md](SECURITY.md)
+- Privacy: [PRIVACY.md](PRIVACY.md)
+- Third-party notices: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+
+Lumina is available under the [MIT License](LICENSE).
