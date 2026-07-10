@@ -296,6 +296,7 @@ function LiquidGlass({
   style = {},
   mode = "standard",
   animate = true,
+  trackLight = animate,
   onClick
 }) {
   const glassRef = useRef(null);
@@ -327,7 +328,7 @@ function LiquidGlass({
     [mouseContainer]
   );
   useEffect(() => {
-    if (!animate) {
+    if (!trackLight) {
       return;
     }
     if (externalGlobalMousePos && externalMouseOffset) {
@@ -341,7 +342,7 @@ function LiquidGlass({
     return () => {
       container.removeEventListener("mousemove", handleMouseMove);
     };
-  }, [animate, handleMouseMove, mouseContainer, externalGlobalMousePos, externalMouseOffset]);
+  }, [trackLight, handleMouseMove, mouseContainer, externalGlobalMousePos, externalMouseOffset]);
   const calculateDirectionalScale = useCallback(() => {
     if (!globalMousePos.x || !globalMousePos.y || !glassRef.current) {
       return "scale(1)";

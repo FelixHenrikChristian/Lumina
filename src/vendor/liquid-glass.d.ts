@@ -1,6 +1,6 @@
 // Types for the vendored liquid-glass-react (MIT, github.com/rdev/liquid-glass-react).
-// Local additions over upstream: `animate` prop (false = static surface, no
-// transitions or cursor-tracking) and ResizeObserver-based size tracking.
+// Local additions over upstream: independent deformation animation and light
+// tracking controls, plus ResizeObserver-based size tracking.
 import type { CSSProperties, ReactNode, RefObject } from "react";
 
 export interface LiquidGlassProps {
@@ -20,6 +20,7 @@ export interface LiquidGlassProps {
   overLight?: boolean;
   mode?: "standard" | "polar" | "prominent" | "shader";
   animate?: boolean;
+  trackLight?: boolean;
   onClick?: () => void;
 }
 

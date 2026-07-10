@@ -12,6 +12,7 @@ export type StaticLiquidGlassProps = Pick<
   | "cornerRadius"
   | "overLight"
   | "animate"
+  | "trackLight"
   | "padding"
 >;
 
@@ -26,6 +27,7 @@ export function staticLiquidGlassProps(glass: GlassConfig): StaticLiquidGlassPro
     cornerRadius: glass.cornerRadius,
     overLight: glass.overLight,
     animate: false,
+    trackLight: true,
     padding: "0px",
   };
 }

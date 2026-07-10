@@ -4,7 +4,7 @@ import test from "node:test";
 import type { GlassConfig } from "../src/core/models.ts";
 import { staticLiquidGlassProps } from "../src/components/staticLiquidGlass.ts";
 
-test("staticLiquidGlassProps forwards visual settings and disables motion", () => {
+test("staticLiquidGlassProps forwards visual settings, disables deformation, and tracks light", () => {
   const glass: GlassConfig = {
     mode: "polar",
     displacementScale: 117,
@@ -26,6 +26,7 @@ test("staticLiquidGlassProps forwards visual settings and disables motion", () =
     cornerRadius: 38,
     overLight: true,
     animate: false,
+    trackLight: true,
     padding: "0px",
   });
 });
