@@ -6,11 +6,27 @@ contextBridge.exposeInMainWorld("luminaNative", {
   chooseWallpaper: () => ipcRenderer.invoke("lumina:chooseWallpaper"),
   pickFolder: () => ipcRenderer.invoke("lumina:pickFolder"),
   registerRoot: (rootPath) => ipcRenderer.invoke("lumina:registerRoot", rootPath),
+  watchDirectory: (directoryPath) => ipcRenderer.invoke("lumina:watchDirectory", directoryPath),
+  unwatchDirectory: (token) => ipcRenderer.invoke("lumina:unwatchDirectory", token),
+  onDirectoryChanged: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on("lumina:directoryChanged", listener);
+    return () => ipcRenderer.removeListener("lumina:directoryChanged", listener);
+  },
   list: (dirPath) => ipcRenderer.invoke("lumina:list", dirPath),
+  pathExists: (targetPath) => ipcRenderer.invoke("lumina:pathExists", targetPath),
   listRecursive: (rootPath) => ipcRenderer.invoke("lumina:listRecursive", rootPath),
   mkdir: (dirPath) => ipcRenderer.invoke("lumina:mkdir", dirPath),
   rename: (oldPath, newName) => ipcRenderer.invoke("lumina:rename", oldPath, newName),
   trash: (paths) => ipcRenderer.invoke("lumina:trash", paths),
+  deletePermanently: (paths) => ipcRenderer.invoke("lumina:deletePermanently", paths),
+  transfer: (paths, destinationPath, move) => ipcRenderer.invoke("lumina:transfer", paths, destinationPath, move),
+  writeFileClipboard: (paths, move) => ipcRenderer.invoke("lumina:writeFileClipboard", paths, move),
+  pasteFileClipboard: (destinationPath) => ipcRenderer.invoke("lumina:pasteFileClipboard", destinationPath),
+  readFileClipboard: () => ipcRenderer.invoke("lumina:readFileClipboard"),
+  undoNativePaste: () => ipcRenderer.invoke("lumina:undoNativePaste"),
+  redoNativePaste: () => ipcRenderer.invoke("lumina:redoNativePaste"),
+  restoreDeleted: (paths) => ipcRenderer.invoke("lumina:restoreDeleted", paths),
   readFile: (filePath) => ipcRenderer.invoke("lumina:readFile", filePath),
   openPath: (targetPath) => ipcRenderer.invoke("lumina:openPath", targetPath),
   reveal: (targetPath) => ipcRenderer.invoke("lumina:reveal", targetPath),

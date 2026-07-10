@@ -1,6 +1,7 @@
 // Typed view of the API exposed by electron/preload.cjs. Present only when
 // the app runs inside Electron.
 import type { CustomWallpaper } from "../core/models";
+import type { FileClipboardState, SystemClipboardPasteResult } from "./types";
 
 export interface NativeEntry {
   readonly name: string;
@@ -15,11 +16,23 @@ export interface LuminaNativeApi {
   chooseWallpaper(): Promise<CustomWallpaper | null>;
   pickFolder(): Promise<{ path: string; name: string } | null>;
   registerRoot(rootPath: string): Promise<boolean>;
+  watchDirectory(directoryPath: string): Promise<string>;
+  unwatchDirectory(token: string): Promise<void>;
+  onDirectoryChanged(callback: () => void): () => void;
   list(dirPath: string): Promise<NativeEntry[]>;
+  pathExists(targetPath: string): Promise<boolean>;
   listRecursive(rootPath: string): Promise<NativeEntry[]>;
   mkdir(dirPath: string): Promise<string>;
   rename(oldPath: string, newName: string): Promise<string>;
-  trash(paths: string[]): Promise<void>;
+  trash(paths: string[]): Promise<{ aborted: boolean }>;
+  deletePermanently(paths: string[]): Promise<{ aborted: boolean }>;
+  transfer(paths: string[], destinationPath: string, move: boolean): Promise<{ aborted: boolean }>;
+  writeFileClipboard(paths: string[], move: boolean): Promise<void>;
+  pasteFileClipboard(destinationPath: string): Promise<SystemClipboardPasteResult>;
+  readFileClipboard(): Promise<FileClipboardState>;
+  undoNativePaste(): Promise<{ handled: boolean }>;
+  redoNativePaste(): Promise<{ handled: boolean }>;
+  restoreDeleted(paths: string[]): Promise<void>;
   readFile(filePath: string): Promise<ArrayBuffer>;
   openPath(targetPath: string): Promise<boolean>;
   reveal(targetPath: string): Promise<boolean>;

@@ -8,7 +8,8 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from "react";
-import { tagStyleFor, useLumina, useT } from "../state/store";
+import { tagStyleFor, useLumina, useT, type FileTransferConflict } from "../state/store";
+import type { TransferConflictAction, TransferConflictResolutions } from "../fs/types";
 import type { FileItem, FileSortField, LocationPathSegment } from "../core/models";
 import {
   CARD_WIDTH_ZOOM_LEVELS,
@@ -26,7 +27,8 @@ import {
   hasTagDrag,
   readTagDrag,
 } from "./tagDrag";
-import { ConfirmDialog, Popover, useOverlay } from "./overlays";
+import { ConfirmDialog, GlassDialog, Popover, useOverlay } from "./overlays";
+import { LiquidGlassButton } from "./LiquidGlassButton";
 import {
   BackIcon,
   CheckIcon,
@@ -54,9 +56,18 @@ const SORT_FIELDS: { field: FileSortField; labelKey: string }[] = [
   { field: "size", labelKey: "SortSize" },
 ];
 
+interface PendingTransfer {
+  readonly paths: string[];
+  readonly move: boolean;
+  readonly conflicts: FileTransferConflict[];
+  readonly index: number;
+  readonly resolutions: TransferConflictResolutions;
+}
+
 export function FileExplorer() {
   const t = useT();
   const selectedLocationId = useLumina((s) => s.selectedLocationId);
+  const currentPath = useLumina((s) => s.currentPath);
   const files = useLumina((s) => s.files);
   const isBusy = useLumina((s) => s.isBusy);
   const errorMessage = useLumina((s) => s.errorMessage);
@@ -68,8 +79,13 @@ export function FileExplorer() {
   const cardWidth = CARD_WIDTH_ZOOM_LEVELS[zoomLevelIndex];
 
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [permanentDelete, setPermanentDelete] = useState(false);
+  const [pendingTransfer, setPendingTransfer] = useState<PendingTransfer | null>(null);
+  const [cutPaths, setCutPaths] = useState<Set<string>>(() => new Set());
   const gridRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
+  const clipboardRef = useRef<{ paths: string[]; cut: boolean } | null>(null);
+  const clipboardWriteRef = useRef<Promise<void> | null>(null);
 
   // Ctrl+wheel zoom needs preventDefault, which React's passive wheel
   // listeners cannot deliver — attach natively.
@@ -85,19 +101,56 @@ export function FileExplorer() {
     return () => grid.removeEventListener("wheel", onWheel);
   }, [selectedLocationId]);
 
+  useEffect(() => {
+    let disposed = false;
+    let stopWatching: () => void = () => undefined;
+    void useLumina
+      .getState()
+      .watchCurrentDirectory(() => {
+        if (!disposed) void useLumina.getState().refresh();
+      })
+      .then((stop) => {
+        if (disposed) stop();
+        else stopWatching = stop;
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+      stopWatching();
+    };
+  }, [selectedLocationId, currentPath]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const syncSystemClipboard = async () => {
+      const clipboard = await useLumina.getState().readSystemClipboard();
+      if (cancelled || !clipboard.supported) return;
+      clipboardRef.current = null;
+      setCutPaths(clipboard.move ? new Set(clipboard.paths) : new Set());
+    };
+    const onFocus = () => void syncSystemClipboard();
+    void syncSystemClipboard();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [selectedLocationId]);
+
   // App-level shortcuts (skipped while typing in a field).
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       const target = event.target as HTMLElement;
-      const typing = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
+      const typing =
+        target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
       const state = useLumina.getState();
-      if ((event.ctrlKey && (event.key === "f" || event.key === "e")) ) {
+      if (typing) return;
+      if (event.ctrlKey && (event.code === "KeyF" || event.code === "KeyE")) {
         event.preventDefault();
         searchRef.current?.focus();
         searchRef.current?.select();
         return;
       }
-      if (typing) return;
       if (event.key === "F5") {
         event.preventDefault();
         void state.refresh();
@@ -126,7 +179,11 @@ export function FileExplorer() {
     return Math.max(1, tracks);
   };
 
-  const moveFocus = (delta: number, extend: boolean) => {
+  const restoreGridFocus = () => {
+    window.requestAnimationFrame(() => gridRef.current?.focus({ preventScroll: true }));
+  };
+
+  const moveFocus = (delta: number, extend: boolean, focusOnly: boolean) => {
     const state = useLumina.getState();
     if (state.files.length === 0) return;
     const current = state.focusedPath ?? [...state.selectedPaths][0] ?? null;
@@ -139,10 +196,147 @@ export function FileExplorer() {
         : Math.min(Math.max(currentIndex + delta, 0), state.files.length - 1);
     const path = state.files[target].path;
     if (extend) state.extendSelectionTo(path);
+    else if (focusOnly) state.focusPath(path);
     else state.selectOnly(path);
     gridRef.current
       ?.querySelector(`[data-path="${CSS.escape(path)}"]`)
       ?.scrollIntoView({ block: "nearest" });
+  };
+
+  // File-operation shortcuts belong to the explorer window, not to the grid
+  // element's DOM focus. A pointer-selected card is a non-focusable div, so
+  // grid-only handlers silently miss Ctrl+C/X/V (and Ctrl+Z/Y) after a click.
+  useEffect(() => {
+    const onFileShortcut = (event: globalThis.KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      const typing =
+        target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
+      const overlayOpen = document.querySelector('[role="dialog"], [role="menu"], .lg-popover');
+      if (typing || overlayOpen || !event.ctrlKey || event.altKey) return;
+
+      const state = useLumina.getState();
+      if (!state.selectedLocationId) return;
+      const key = event.key.toLowerCase();
+      const isLetter = (letter: string) =>
+        event.code === `Key${letter.toUpperCase()}` || key === letter.toLowerCase();
+
+      if (isLetter("a") && !event.shiftKey) {
+        event.preventDefault();
+        state.selectAll();
+        return;
+      }
+
+      if ((isLetter("c") || isLetter("x")) && !event.shiftKey) {
+        if (state.selectedPaths.size === 0) return;
+        event.preventDefault();
+        const cut = isLetter("x");
+        const paths = [...state.selectedPaths];
+        clipboardRef.current = { paths, cut };
+        setCutPaths(cut ? new Set(paths) : new Set());
+        clipboardWriteRef.current = state.copyPathsToSystemClipboard(paths, cut);
+        return;
+      }
+
+      if (isLetter("v") && !event.shiftKey) {
+        event.preventDefault();
+        void (async () => {
+          await clipboardWriteRef.current;
+          const result = await useLumina.getState().pasteSystemClipboard();
+          if (result.supported) {
+            if (result.pasted) {
+              clipboardRef.current = null;
+              setCutPaths(new Set());
+            }
+            return;
+          }
+
+          const clipboard = clipboardRef.current;
+          if (!clipboard) return;
+          const currentState = useLumina.getState();
+          try {
+            const conflicts = await currentState.inspectTransfer(clipboard.paths, clipboard.cut);
+            if (conflicts.length > 0) {
+              setPendingTransfer({
+                paths: clipboard.paths,
+                move: clipboard.cut,
+                conflicts,
+                index: 0,
+                resolutions: {},
+              });
+            } else {
+              await currentState.transferPaths(clipboard.paths, clipboard.cut);
+              if (clipboard.cut) setCutPaths(new Set());
+            }
+          } catch (error) {
+            useLumina.setState({
+              errorMessage: error instanceof Error ? error.message : String(error),
+            });
+          }
+        })();
+        return;
+      }
+
+      if (isLetter("d") && !event.shiftKey) {
+        if (state.selectedPaths.size === 0) return;
+        event.preventDefault();
+        const nativeLocation = state.locations.find(
+          (location) => location.id === state.selectedLocationId,
+        )?.kind === "native";
+        if (nativeLocation) void state.deleteSelected(false);
+        else {
+          setPermanentDelete(false);
+          setConfirmDelete(true);
+        }
+        return;
+      }
+
+      if (isLetter("n") && event.shiftKey) {
+        event.preventDefault();
+        void state.createFolder();
+        return;
+      }
+
+      if (isLetter("z")) {
+        event.preventDefault();
+        if (event.shiftKey) void state.redoLastFileOperation();
+        else void state.undoLastFileOperation();
+        return;
+      }
+
+      if (isLetter("y") && !event.shiftKey) {
+        event.preventDefault();
+        void state.redoLastFileOperation();
+      }
+    };
+
+    window.addEventListener("keydown", onFileShortcut);
+    return () => window.removeEventListener("keydown", onFileShortcut);
+  }, []);
+
+  const resolveTransferConflict = (action: TransferConflictAction) => {
+    if (!pendingTransfer) return;
+    const conflict = pendingTransfer.conflicts[pendingTransfer.index];
+    const resolutions = {
+      ...pendingTransfer.resolutions,
+      [conflict.sourcePath.toLowerCase()]: action,
+    };
+    const next = pendingTransfer.index + 1;
+    if (next < pendingTransfer.conflicts.length) {
+      setPendingTransfer({ ...pendingTransfer, index: next, resolutions });
+      return;
+    }
+    setPendingTransfer(null);
+    void useLumina.getState().transferPaths(pendingTransfer.paths, pendingTransfer.move, resolutions);
+    if (pendingTransfer.move) setCutPaths(new Set());
+  };
+
+  const requestDelete = (permanently: boolean) => {
+    if (trashDelete) {
+      void useLumina.getState().deleteSelected(permanently);
+      return;
+    }
+    setPermanentDelete(permanently);
+    setConfirmDelete(true);
   };
 
   const onGridKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -151,53 +345,67 @@ export function FileExplorer() {
     switch (event.key) {
       case "ArrowLeft":
         event.preventDefault();
-        moveFocus(-1, event.shiftKey);
+        moveFocus(-1, event.shiftKey, event.ctrlKey && !event.shiftKey);
         break;
       case "ArrowRight":
         event.preventDefault();
-        moveFocus(1, event.shiftKey);
+        moveFocus(1, event.shiftKey, event.ctrlKey && !event.shiftKey);
         break;
       case "ArrowUp":
         if (event.altKey) break;
         event.preventDefault();
-        moveFocus(-columnsOf(), event.shiftKey);
+        moveFocus(-columnsOf(), event.shiftKey, event.ctrlKey && !event.shiftKey);
         break;
       case "ArrowDown":
         event.preventDefault();
-        moveFocus(columnsOf(), event.shiftKey);
+        moveFocus(columnsOf(), event.shiftKey, event.ctrlKey && !event.shiftKey);
         break;
       case "Home":
         event.preventDefault();
-        moveFocus(-state.files.length, event.shiftKey);
+        moveFocus(-state.files.length, event.shiftKey, event.ctrlKey && !event.shiftKey);
         break;
       case "End":
         event.preventDefault();
-        moveFocus(state.files.length, event.shiftKey);
+        moveFocus(state.files.length, event.shiftKey, event.ctrlKey && !event.shiftKey);
         break;
       case "Enter": {
+        if (event.altKey) break;
         const focused = state.files.find((f) => f.path === state.focusedPath);
-        if (focused) void state.openFile(focused);
+        if (focused) {
+          event.preventDefault();
+          void state.openFile(focused);
+        }
         break;
       }
       case "F2":
-        if (state.focusedPath) state.beginRename(state.focusedPath);
+        if (state.focusedPath) {
+          event.preventDefault();
+          state.beginRename(state.focusedPath);
+        }
         break;
       case "Delete":
-        if (state.selectedPaths.size > 0) setConfirmDelete(true);
+        if (state.selectedPaths.size > 0) {
+          event.preventDefault();
+          requestDelete(event.shiftKey);
+        }
+        break;
+      case " ":
+        if (event.ctrlKey && state.focusedPath) {
+          event.preventDefault();
+          state.toggleSelect(state.focusedPath);
+        }
         break;
       case "Escape":
         state.clearSelection();
-        break;
-      case "a":
-        if (event.ctrlKey) {
-          event.preventDefault();
-          state.selectAll();
-        }
         break;
     }
   };
 
   const onGridPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    if (!target.closest("input, button, [contenteditable='true']")) {
+      gridRef.current?.focus({ preventScroll: true });
+    }
     if (event.target === event.currentTarget) {
       useLumina.getState().clearSelection();
     }
@@ -217,7 +425,10 @@ export function FileExplorer() {
 
   return (
     <div className="explorer">
-      <ExplorerToolbar searchRef={searchRef} onRequestDelete={() => setConfirmDelete(true)} />
+      <ExplorerToolbar
+        searchRef={searchRef}
+        onRequestDelete={() => requestDelete(false)}
+      />
       <Breadcrumbs />
 
       {errorMessage && (
@@ -254,7 +465,13 @@ export function FileExplorer() {
         onPointerDown={onGridPointerDown}
       >
         {files.map((file) => (
-          <FileCard key={file.path} file={file} onRequestDelete={() => setConfirmDelete(true)} />
+          <FileCard
+            key={file.path}
+            file={file}
+            isCut={cutPaths.has(file.path)}
+            onRenameComplete={restoreGridFocus}
+            onRequestDelete={() => requestDelete(false)}
+          />
         ))}
         {!isBusy && files.length === 0 && !errorMessage && (
           <div className="explorer-empty">
@@ -279,18 +496,71 @@ export function FileExplorer() {
       {confirmDelete && (
         <ConfirmDialog
           title={t("Delete")}
-          message={t(trashDelete ? "DeleteConfirmTrash" : "DeleteConfirm", selectedCount)}
+          message={t(!permanentDelete && trashDelete ? "DeleteConfirmTrash" : "DeleteConfirm", selectedCount)}
           confirmLabel={t("Delete")}
           cancelLabel={t("Cancel")}
           danger
           onConfirm={() => {
             setConfirmDelete(false);
-            void useLumina.getState().deleteSelected();
+            void useLumina.getState().deleteSelected(permanentDelete);
           }}
           onCancel={() => setConfirmDelete(false)}
         />
       )}
+      {pendingTransfer && (
+        <TransferConflictDialog
+          conflict={pendingTransfer.conflicts[pendingTransfer.index]}
+          move={pendingTransfer.move}
+          onAction={resolveTransferConflict}
+          onCancel={() => setPendingTransfer(null)}
+        />
+      )}
     </div>
+  );
+}
+
+function TransferConflictDialog({
+  conflict,
+  move,
+  onAction,
+  onCancel,
+}: {
+  conflict: FileTransferConflict;
+  move: boolean;
+  onAction(action: TransferConflictAction): void;
+  onCancel(): void;
+}) {
+  const describe = (file: FileItem) =>
+    `${file.isDirectory ? "文件夹" : formatSize(file.size)} · ${file.modified ? formatModified(file.modified) : "未知日期"}`;
+  if (conflict.sameDirectory) {
+    return (
+      <GlassDialog title="粘贴已中断" onDismiss={onCancel} width={460}>
+        <p className="lg-dialog-message">源文件夹和目标文件夹相同：{conflict.source.name}</p>
+        <div className="lg-dialog-actions">
+          <LiquidGlassButton onClick={onCancel}>取消</LiquidGlassButton>
+          <LiquidGlassButton variant="primary" onClick={() => onAction("skip")} autoFocus>
+            跳过
+          </LiquidGlassButton>
+        </div>
+      </GlassDialog>
+    );
+  }
+  return (
+    <GlassDialog title="文件冲突" onDismiss={onCancel} width={520}>
+      <p className="lg-dialog-message">目标文件夹已包含同名项目：{conflict.source.name}</p>
+      <div className="file-conflict-details">
+        <div><strong>源</strong><br />{describe(conflict.source)}</div>
+        {conflict.destination && <div><strong>目标</strong><br />{describe(conflict.destination)}</div>}
+      </div>
+      <div className="lg-dialog-actions">
+        <LiquidGlassButton onClick={onCancel}>取消</LiquidGlassButton>
+        <LiquidGlassButton onClick={() => onAction("skip")}>跳过</LiquidGlassButton>
+        <LiquidGlassButton onClick={() => onAction("keepBoth")}>保留两个</LiquidGlassButton>
+        <LiquidGlassButton variant={move ? "danger" : "primary"} onClick={() => onAction("replace")} autoFocus>
+          替换
+        </LiquidGlassButton>
+      </div>
+    </GlassDialog>
   );
 }
 
@@ -593,9 +863,13 @@ function Breadcrumbs() {
 
 function FileCard({
   file,
+  isCut,
+  onRenameComplete,
   onRequestDelete,
 }: {
   file: FileItem;
+  isCut: boolean;
+  onRenameComplete(): void;
   onRequestDelete(): void;
 }) {
   const t = useT();
@@ -710,6 +984,7 @@ function FileCard({
       data-path={file.path}
       className={[
         "file-card",
+        isCut ? "is-cut" : "",
         selected ? "is-selected" : "",
         focused ? "is-focused" : "",
         dropIndex !== null ? "is-drop-target" : "",
@@ -755,7 +1030,7 @@ function FileCard({
       </div>
       <div className="file-info">
         {renaming ? (
-          <RenameInput file={file} />
+          <RenameInput file={file} onComplete={onRenameComplete} />
         ) : (
           <>
             <span className="file-name" title={file.name}>
@@ -814,7 +1089,7 @@ function FileTagChip({ file, name, index }: { file: FileItem; name: string; inde
   );
 }
 
-function RenameInput({ file }: { file: FileItem }) {
+function RenameInput({ file, onComplete }: { file: FileItem; onComplete(): void }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const committed = useRef(false);
 
@@ -832,7 +1107,7 @@ function RenameInput({ file }: { file: FileItem }) {
   const commit = (value: string) => {
     if (committed.current) return;
     committed.current = true;
-    void useLumina.getState().commitRename(file.path, value);
+    void useLumina.getState().commitRename(file.path, value).finally(onComplete);
   };
 
   return (
@@ -846,6 +1121,7 @@ function RenameInput({ file }: { file: FileItem }) {
         else if (e.key === "Escape") {
           committed.current = true;
           useLumina.getState().cancelRename();
+          onComplete();
         }
       }}
       onBlur={(e) => commit(e.currentTarget.value)}

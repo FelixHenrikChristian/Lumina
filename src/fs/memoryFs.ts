@@ -2,7 +2,13 @@ import type { FileItem } from "../core/models";
 import { previewKindFor } from "../core/models";
 import { getDisplayName, parseTagsFromFilename } from "../core/tagParser";
 import { baseNameOf, joinPath, parentPathOf } from "../core/paths";
-import { uniqueName, validateEntryName, type FileBrowserService } from "./types";
+import {
+  copyName,
+  uniqueName,
+  validateEntryName,
+  type FileBrowserService,
+  type TransferConflictResolutions,
+} from "./types";
 
 interface MemoryNode {
   name: string;
@@ -31,6 +37,13 @@ function dir(name: string, children: MemoryNode[] = []): MemoryNode {
   const map = new Map<string, MemoryNode>();
   for (const child of children) map.set(child.name.toLowerCase(), child);
   return { name, isDirectory: true, size: 0, modified: Date.now(), children: map };
+}
+
+function cloneNode(node: MemoryNode): MemoryNode {
+  return {
+    ...node,
+    children: new Map([...node.children].map(([key, child]) => [key, cloneNode(child)])),
+  };
 }
 
 let seedCounter = 0;
@@ -180,7 +193,7 @@ export class MemoryFileBrowser implements FileBrowserService {
     return joinPath(parentPath, name);
   }
 
-  async deleteMany(paths: string[]): Promise<void> {
+  async deleteMany(paths: string[], _permanently = false): Promise<boolean> {
     for (const path of paths) {
       const normalized = path.trim().replace(/\/+$/, "");
       const parentPath = parentPathOf(normalized);
@@ -188,6 +201,57 @@ export class MemoryFileBrowser implements FileBrowserService {
       const parent = this.resolve(parentPath);
       parent.children.delete(baseNameOf(normalized).toLowerCase());
     }
+    return true;
+  }
+
+  async transferMany(
+    paths: string[],
+    destinationPath: string,
+    move: boolean,
+    resolutions: TransferConflictResolutions = {},
+  ): Promise<boolean> {
+    const destination = this.resolve(destinationPath);
+    if (!destination.isDirectory) throw new Error(`Directory not found: ${destinationPath}`);
+    const normalizedDestination = destinationPath.trim().replace(/\/+$/, "").toLowerCase();
+    const entries = paths.map((path) => {
+      const normalized = path.trim().replace(/\/+$/, "");
+      const parentPath = parentPathOf(normalized);
+      if (parentPath === null) throw new Error(`Cannot transfer root directory: ${path}`);
+      const parent = this.resolve(parentPath);
+      const name = baseNameOf(normalized);
+      const node = parent.children.get(name.toLowerCase());
+      if (!node) throw new Error(`File or directory not found: ${path}`);
+      if (node.isDirectory && normalizedDestination.startsWith(`${normalized.toLowerCase()}/`)) {
+        throw new Error("Cannot transfer a folder into itself.");
+      }
+      const existing = destination.children.get(name.toLowerCase());
+      const action = resolutions[normalized.toLowerCase()];
+      if (parent === destination) {
+        if (move) {
+          if (action === "skip") return null;
+          throw new Error("The source and destination folders are the same.");
+        }
+        return { parent, name, targetName: copyName(new Set(destination.children.keys()), name), node };
+      }
+      if (existing) {
+        if (action === "skip") return null;
+        if (action === "keepBoth") {
+          return { parent, name, targetName: copyName(new Set(destination.children.keys()), name), node };
+        }
+        if (action !== "replace") throw new Error(`Destination already exists: ${joinPath(destinationPath, name)}`);
+      }
+      return { parent, name, targetName: name, node, replace: Boolean(existing) };
+    });
+    for (const entry of entries) {
+      if (!entry) continue;
+      const { parent, name, targetName, node, replace } = entry;
+      if (replace) destination.children.delete(targetName.toLowerCase());
+      const copy = move ? node : cloneNode(node);
+      if (move) parent.children.delete(name.toLowerCase());
+      copy.name = targetName;
+      destination.children.set(targetName.toLowerCase(), copy);
+    }
+    return true;
   }
 
   async getFileBlob(path: string): Promise<Blob | null> {

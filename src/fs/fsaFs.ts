@@ -2,7 +2,13 @@ import type { FileItem } from "../core/models";
 import { previewKindFor } from "../core/models";
 import { getDisplayName, parseTagsFromFilename } from "../core/tagParser";
 import { baseNameOf, joinPath, parentPathOf } from "../core/paths";
-import { uniqueName, validateEntryName, type FileBrowserService } from "./types";
+import {
+  copyName,
+  uniqueName,
+  validateEntryName,
+  type FileBrowserService,
+  type TransferConflictResolutions,
+} from "./types";
 
 // Minimal typings for File System Access API members not yet in lib.dom.
 interface DirectoryHandle extends FileSystemDirectoryHandle {
@@ -237,12 +243,81 @@ export class FsaFileBrowser implements FileBrowserService {
     throw new Error("Renaming folders is not supported by this browser.");
   }
 
-  async deleteMany(paths: string[]): Promise<void> {
+  async deleteMany(paths: string[], _permanently = false): Promise<boolean> {
     for (const path of paths) {
       const normalized = path.trim().replace(/\/+$/, "");
       const { parent, name } = await this.resolveEntry(normalized);
       await parent.removeEntry(name, { recursive: true });
     }
+    return true;
+  }
+
+  async transferMany(
+    paths: string[],
+    destinationPath: string,
+    move: boolean,
+    resolutions: TransferConflictResolutions = {},
+  ): Promise<boolean> {
+    const destination = await this.resolveDirectory(destinationPath);
+    const normalizedDestination = destinationPath.trim().replace(/\/+$/, "").toLowerCase();
+    const entries = await Promise.all(
+      paths.map(async (path) => {
+        const normalized = path.trim().replace(/\/+$/, "");
+        const entry = await this.resolveEntry(normalized);
+        if (entry.handle.kind === "directory" && normalizedDestination.startsWith(`${normalized.toLowerCase()}/`)) {
+          throw new Error("Cannot transfer a folder into itself.");
+        }
+        const existing = await destination
+          .getFileHandle(entry.name)
+          .catch(() => destination.getDirectoryHandle(entry.name).catch(() => null));
+        const action = resolutions[normalized.toLowerCase()];
+        if (entry.parent === destination) {
+          if (move) {
+            if (action === "skip") return null;
+            throw new Error("The source and destination folders are the same.");
+          }
+          return { ...entry, targetName: await this.copyNameIn(destination, entry.name) };
+        }
+        if (existing) {
+          if (action === "skip") return null;
+          if (action === "keepBoth") {
+            return { ...entry, targetName: await this.copyNameIn(destination, entry.name) };
+          }
+          if (action !== "replace") throw new Error(`Destination already exists: ${joinPath(destinationPath, entry.name)}`);
+        }
+        return { ...entry, targetName: entry.name, replace: Boolean(existing) };
+      }),
+    );
+
+    const copyEntry = async (parent: DirectoryHandle, handle: FileSystemHandle, name = handle.name): Promise<void> => {
+      if (handle.kind === "file") {
+        const source = await (handle as FileSystemFileHandle).getFile();
+        const target = await parent.getFileHandle(name, { create: true });
+        const writable = await target.createWritable();
+        await source.stream().pipeTo(writable);
+        return;
+      }
+      const target = (await parent.getDirectoryHandle(name, { create: true })) as DirectoryHandle;
+      for await (const [, child] of (handle as DirectoryHandle).entries()) {
+        await copyEntry(target, child);
+      }
+    };
+
+    for (const entry of entries) {
+      if (!entry) continue;
+      const { parent, handle, name, targetName } = entry;
+      const replace = "replace" in entry && entry.replace;
+      if (replace) await destination.removeEntry(targetName, { recursive: true });
+      await copyEntry(destination, handle, targetName);
+      if (move) await parent.removeEntry(name, { recursive: handle.kind === "directory" });
+    }
+    return true;
+  }
+
+  private async copyNameIn(parent: DirectoryHandle, name: string): Promise<string> {
+    const existing = new Set<string>();
+    for await (const [entryName] of parent.entries()) existing.add(entryName);
+    return copyName(existing, name);
   }
 
   async getFileBlob(path: string): Promise<Blob | null> {

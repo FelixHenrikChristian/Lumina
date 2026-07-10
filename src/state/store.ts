@@ -14,7 +14,8 @@ import {
   CARD_WIDTH_ZOOM_LEVELS,
   DEFAULT_FILE_SORT_OPTIONS,
 } from "../core/models";
-import { LocationPathScope, isSamePath } from "../core/paths";
+import { LocationPathScope, baseNameOf, isSamePath, joinPath, parentPathOf } from "../core/paths";
+import type { FileClipboardState, SystemClipboardPasteResult, TransferConflictResolutions } from "../fs/types";
 import { sortFileItems } from "../core/sorting";
 import { resolveLanguage, translate } from "../core/localization";
 import {
@@ -82,6 +83,27 @@ export const FALLBACK_TAG_STYLE: TagStyle = {
   textColor: "#c8c8c8",
   known: false,
 };
+
+export interface FileTransferConflict {
+  readonly sourcePath: string;
+  readonly source: FileItem;
+  readonly destination: FileItem | null;
+  readonly sameDirectory: boolean;
+}
+
+type ExplorerHistoryEntry =
+  | { readonly kind: "rename"; readonly locationId: string; readonly before: string; readonly after: string }
+  | {
+      readonly kind: "transfer";
+      readonly locationId: string;
+      readonly sources: string[];
+      readonly sourceDirectory: string;
+      readonly destination: string;
+      readonly move: boolean;
+    }
+  | { readonly kind: "delete"; readonly locationId: string; readonly paths: string[] }
+  | { readonly kind: "create"; readonly locationId: string; readonly path: string }
+  | { readonly kind: "nativePaste"; readonly locationId: string; readonly undoAvailable: boolean };
 
 interface LuminaState {
   // settings + i18n
@@ -151,7 +173,15 @@ interface LuminaState {
 
   createFolder(): Promise<void>;
   commitRename(path: string, newFileSystemName: string): Promise<void>;
-  deleteSelected(): Promise<void>;
+  deleteSelected(permanently?: boolean): Promise<void>;
+  inspectTransfer(paths: string[], move: boolean): Promise<FileTransferConflict[]>;
+  transferPaths(paths: string[], move: boolean, resolutions?: TransferConflictResolutions): Promise<void>;
+  copyPathsToSystemClipboard(paths: string[], move: boolean): Promise<void>;
+  pasteSystemClipboard(): Promise<SystemClipboardPasteResult>;
+  readSystemClipboard(): Promise<FileClipboardState>;
+  watchCurrentDirectory(onChanged: () => void): Promise<() => void>;
+  undoLastFileOperation(): Promise<void>;
+  redoLastFileOperation(): Promise<void>;
   insertTagIntoFile(file: FileItem, tagName: string, insertionIndex: number): Promise<void>;
   removeTagFromFile(file: FileItem, tagName: string): Promise<void>;
   openFile(file: FileItem): Promise<void>;
@@ -210,6 +240,12 @@ const initialTagGroups = loadTagGroups();
 const initialAppState = loadAppState();
 
 export const useLumina = create<LuminaState>((set, get) => {
+  const undoStack: ExplorerHistoryEntry[] = [];
+  const redoStack: ExplorerHistoryEntry[] = [];
+  const recordHistory = (entry: ExplorerHistoryEntry) => {
+    undoStack.push(entry);
+    redoStack.length = 0;
+  };
   const persistLocations = () => {
     const { locations, selectedLocationId } = get();
     saveLocations(locations);
@@ -614,6 +650,8 @@ export const useLumina = create<LuminaState>((set, get) => {
         );
         await reloadAndSelect([newPath]);
         set({ renamingPath: newPath });
+        const locationId = get().selectedLocationId;
+        if (locationId) recordHistory({ kind: "create", locationId, path: newPath });
       } catch (error) {
         set({ errorMessage: message(error) });
       }
@@ -627,11 +665,13 @@ export const useLumina = create<LuminaState>((set, get) => {
       try {
         const newPath = await browser.rename(path, trimmed);
         await reloadAndSelect([newPath]);
+        const locationId = get().selectedLocationId;
+        if (locationId) recordHistory({ kind: "rename", locationId, before: path, after: newPath });
       } catch (error) {
         set({ errorMessage: message(error) });
       }
     },
-    async deleteSelected() {
+    async deleteSelected(permanently = false) {
       const browser = await currentBrowser();
       const { files, selectedPaths } = get();
       if (!browser || selectedPaths.size === 0) return;
@@ -640,7 +680,12 @@ export const useLumina = create<LuminaState>((set, get) => {
         .filter((i) => i >= 0);
       const minIndex = Math.min(...indexes);
       try {
-        await browser.deleteMany([...selectedPaths]);
+        const deleted = await browser.deleteMany([...selectedPaths], permanently);
+        if (!deleted) return;
+        const locationId = get().selectedLocationId;
+        if (!permanently && locationId && browser.restoreDeleted) {
+          recordHistory({ kind: "delete", locationId, paths: [...selectedPaths] });
+        }
         await loadInto(get().currentPath);
         const remaining = get().files;
         if (remaining.length > 0) {
@@ -648,6 +693,202 @@ export const useLumina = create<LuminaState>((set, get) => {
           get().selectOnly(next.path);
         }
       } catch (error) {
+        set({ errorMessage: message(error) });
+      }
+    },
+    async inspectTransfer(paths, move) {
+      const browser = await currentBrowser();
+      const { currentPath, scope } = get();
+      if (!browser || !scope) return [];
+      const destinationEntries = await browser.loadDirectory(currentPath);
+      const conflicts: FileTransferConflict[] = [];
+      for (const path of [...new Set(paths)]) {
+        if (!scope.containsPath(path)) continue;
+        const parent = parentPathOf(path);
+        if (!parent) continue;
+        const source = (await browser.loadDirectory(parent)).find(
+          (entry) => entry.path.toLowerCase() === path.toLowerCase(),
+        );
+        if (!source) continue;
+        const sameDirectory = isSamePath(parent, currentPath);
+        const destination = destinationEntries.find(
+          (entry) => entry.name.toLowerCase() === source.name.toLowerCase(),
+        ) ?? null;
+        if (sameDirectory || destination) {
+          if (!sameDirectory || move) {
+            conflicts.push({ sourcePath: path, source, destination, sameDirectory });
+          }
+        }
+      }
+      return conflicts;
+    },
+    async transferPaths(paths, move, resolutions = {}) {
+      const browser = await currentBrowser();
+      const { currentPath, scope } = get();
+      if (!browser || !scope || paths.length === 0) return;
+      const uniquePaths = [...new Set(paths)];
+      if (uniquePaths.some((path) => !scope.containsPath(path))) {
+        set({ errorMessage: "The clipboard contains items outside the current location." });
+        return;
+      }
+      try {
+        const transferred = await browser.transferMany(uniquePaths, currentPath, move, resolutions);
+        if (!transferred) return;
+        await reloadAndSelect(uniquePaths.map((path) => joinPath(currentPath, baseNameOf(path))));
+        const sourceDirectory = parentPathOf(uniquePaths[0]);
+        const locationId = get().selectedLocationId;
+        if (
+          locationId &&
+          sourceDirectory &&
+          uniquePaths.every((path) => isSamePath(parentPathOf(path) ?? "", sourceDirectory)) &&
+          !isSamePath(sourceDirectory, currentPath) &&
+          Object.keys(resolutions).length === 0
+        ) {
+          recordHistory({ kind: "transfer", locationId, sources: uniquePaths, sourceDirectory, destination: currentPath, move });
+        }
+      } catch (error) {
+        set({ errorMessage: message(error) });
+      }
+    },
+    async copyPathsToSystemClipboard(paths, move) {
+      const browser = await currentBrowser();
+      if (!browser?.writeFileClipboard || paths.length === 0) return;
+      try {
+        await browser.writeFileClipboard(paths, move);
+      } catch (error) {
+        set({ errorMessage: message(error) });
+      }
+    },
+    async pasteSystemClipboard() {
+      const browser = await currentBrowser();
+      if (!browser?.pasteFileClipboard) return { pasted: false, supported: false };
+      try {
+        const result = await browser.pasteFileClipboard(get().currentPath);
+        if (result.pasted) {
+          if (result.supported && get().selectedLocationId) {
+            recordHistory({
+              kind: "nativePaste",
+              locationId: get().selectedLocationId!,
+              undoAvailable: Boolean(result.undoRecorded),
+            });
+          }
+          await loadInto(get().currentPath);
+        }
+        return result;
+      } catch (error) {
+        set({ errorMessage: message(error) });
+        return { pasted: false, supported: true };
+      }
+    },
+    async readSystemClipboard() {
+      const browser = await currentBrowser();
+      if (!browser?.readFileClipboard) return { paths: [], move: false, supported: false };
+      try {
+        return await browser.readFileClipboard();
+      } catch {
+        return { paths: [], move: false, supported: true };
+      }
+    },
+    async watchCurrentDirectory(onChanged) {
+      const browser = await currentBrowser();
+      if (!browser?.watchDirectory || !get().currentPath) return () => undefined;
+      return browser.watchDirectory(get().currentPath, onChanged);
+    },
+    async undoLastFileOperation() {
+      const entry = undoStack.pop();
+      if (!entry) return;
+      if (entry.locationId !== get().selectedLocationId) {
+        undoStack.push(entry);
+        set({ errorMessage: "Switch back to the original location before undoing this operation." });
+        return;
+      }
+      const browser = await currentBrowser();
+      if (!browser) return;
+      try {
+        if (entry.kind === "nativePaste") {
+          if (!entry.undoAvailable || !browser.undoNativePaste || !(await browser.undoNativePaste())) {
+            throw new Error("This paste must be undone from Windows File Explorer because it involved a conflict or replacement.");
+          }
+        } else if (entry.kind === "rename") {
+          const alreadyUndone = browser.pathExists
+            ? (await browser.pathExists(entry.before)) && !(await browser.pathExists(entry.after))
+            : false;
+          if (!alreadyUndone) await browser.rename(entry.after, baseNameOf(entry.before));
+        } else if (entry.kind === "create") {
+          const alreadyUndone = browser.pathExists ? !(await browser.pathExists(entry.path)) : false;
+          if (!alreadyUndone) await browser.deleteMany([entry.path]);
+        } else if (entry.kind === "delete") {
+          if (!browser.restoreDeleted) throw new Error("This file system cannot restore deleted items.");
+          await browser.restoreDeleted(entry.paths);
+        } else {
+          const targets = entry.sources.map((path) => joinPath(entry.destination, baseNameOf(path)));
+          const targetsMissing = browser.pathExists
+            ? (await Promise.all(targets.map((path) => browser.pathExists!(path)))).every((exists) => !exists)
+            : false;
+          const sourcesPresent = browser.pathExists
+            ? (await Promise.all(entry.sources.map((path) => browser.pathExists!(path)))).every(Boolean)
+            : false;
+          const alreadyUndone = entry.move ? targetsMissing && sourcesPresent : targetsMissing;
+          if (!alreadyUndone) {
+            if (entry.move) await browser.transferMany(targets, entry.sourceDirectory, true);
+            else await browser.deleteMany(targets, true);
+          }
+        }
+        await loadInto(get().currentPath);
+        redoStack.push(entry);
+      } catch (error) {
+        undoStack.push(entry);
+        set({ errorMessage: message(error) });
+      }
+    },
+    async redoLastFileOperation() {
+      const entry = redoStack.pop();
+      if (!entry) return;
+      if (entry.locationId !== get().selectedLocationId) {
+        redoStack.push(entry);
+        set({ errorMessage: "Switch back to the original location before redoing this operation." });
+        return;
+      }
+      const browser = await currentBrowser();
+      if (!browser) return;
+      try {
+        if (entry.kind === "nativePaste") {
+          if (!browser.redoNativePaste || !(await browser.redoNativePaste())) {
+            throw new Error("The native paste operation is no longer available to redo.");
+          }
+        } else if (entry.kind === "rename") {
+          const alreadyRedone = browser.pathExists
+            ? !(await browser.pathExists(entry.before)) && (await browser.pathExists(entry.after))
+            : false;
+          if (!alreadyRedone) await browser.rename(entry.before, baseNameOf(entry.after));
+        } else if (entry.kind === "create") {
+          const alreadyRedone = browser.pathExists ? await browser.pathExists(entry.path) : false;
+          if (!alreadyRedone) {
+            const parent = parentPathOf(entry.path);
+            if (!parent) throw new Error("Cannot redo folder creation outside a parent folder.");
+            await browser.createDirectory(parent, baseNameOf(entry.path));
+          }
+        } else if (entry.kind === "delete") {
+          const alreadyRedone = browser.pathExists
+            ? (await Promise.all(entry.paths.map((path) => browser.pathExists!(path)))).every((exists) => !exists)
+            : false;
+          if (!alreadyRedone) await browser.deleteMany(entry.paths);
+        }
+        else {
+          const targets = entry.sources.map((path) => joinPath(entry.destination, baseNameOf(path)));
+          const targetsPresent = browser.pathExists
+            ? (await Promise.all(targets.map((path) => browser.pathExists!(path)))).every(Boolean)
+            : false;
+          const sourcesMissing = browser.pathExists
+            ? (await Promise.all(entry.sources.map((path) => browser.pathExists!(path)))).every((exists) => !exists)
+            : false;
+          const alreadyRedone = entry.move ? targetsPresent && sourcesMissing : targetsPresent;
+          if (!alreadyRedone) await browser.transferMany(entry.sources, entry.destination, entry.move);
+        }
+        await loadInto(get().currentPath);
+        undoStack.push(entry);
+      } catch (error) {
+        redoStack.push(entry);
         set({ errorMessage: message(error) });
       }
     },
