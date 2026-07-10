@@ -788,6 +788,18 @@ function TagFilterPopover({ anchor, onClose }: { anchor: HTMLElement; onClose():
   return (
     <Popover anchor={anchor} onClose={onClose} align="end">
       <div className="tag-filter">
+        <div className="tag-filter-header">
+          <span className="tag-filter-heading">{t("Tags")}</span>
+          <button
+            type="button"
+            className="lg-chip tag-filter-clear"
+            disabled={selectedIds.size === 0}
+            onClick={() => void clearTagFilters()}
+          >
+            <CloseIcon size={11} />
+            {t("ClearTagFilters")}
+          </button>
+        </div>
         {!hasTags && <p className="sidebar-empty">{t("TagFilterEmpty")}</p>}
         {tagGroups.map(
           (group) =>
@@ -802,8 +814,8 @@ function TagFilterPopover({ anchor, onClose }: { anchor: HTMLElement; onClose():
                       <button
                         key={tag.id}
                         type="button"
-                        className={`tag-chip${active ? " is-filtered" : ""}`}
-                        style={{ background: cssColorFor(style.color), color: style.textColor }}
+                        className={`tag-chip tag-filter-chip${active ? " is-filtered" : ""}`}
+                        style={active ? { background: cssColorFor(style.color), color: style.textColor } : undefined}
                         onClick={() => void toggleTagFilter(tag.id)}
                       >
                         {active && <CheckIcon size={11} />}
@@ -814,12 +826,6 @@ function TagFilterPopover({ anchor, onClose }: { anchor: HTMLElement; onClose():
                 </div>
               </div>
             ),
-        )}
-        {selectedIds.size > 0 && (
-          <button type="button" className="lg-chip" onClick={() => void clearTagFilters()}>
-            <CloseIcon size={11} />
-            {t("ClearTagFilters")}
-          </button>
         )}
       </div>
     </Popover>

@@ -1301,6 +1301,25 @@ select.lg-input option {
   min-width: 220px;
 }
 
+.tag-filter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tag-filter-heading {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--lg-text);
+}
+
+.tag-filter-clear {
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 16px;
+}
+
 .tag-filter-group .tag-chips {
   padding: 4px 0 2px;
 }
@@ -1310,6 +1329,13 @@ select.lg-input option {
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--lg-text-faint);
+}
+
+.tag-filter-chip:not(.is-filtered) {
+  background: color-mix(in srgb, var(--lg-text-faint) 20%, var(--lg-glass-tint));
+  color: var(--lg-text-dim);
+  border-color: var(--lg-stroke);
+  box-shadow: none;
 }
 
 /* ------------------------------------------------------------------ */

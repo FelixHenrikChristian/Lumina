@@ -39,8 +39,6 @@ export function TagSidebar() {
   const t = useT();
   const tagGroups = useLumina((s) => s.tagGroups);
   const tagStyles = useLumina((s) => s.tagStyles);
-  const selectedFilterIds = useLumina((s) => s.selectedTagFilterIds);
-  const toggleTagFilter = useLumina((s) => s.toggleTagFilter);
   const saveTagLibrary = useLumina((s) => s.saveTagLibrary);
   const upsertGroup = useLumina((s) => s.upsertGroup);
   const deleteGroup = useLumina((s) => s.deleteGroup);
@@ -202,19 +200,17 @@ export function TagSidebar() {
                   )}
                   {group.tags.map((tag) => {
                     const style = tagStyleFor(tagStyles, tag.name);
-                    const filtered = selectedFilterIds.has(tag.id);
                     return (
                       <button
                         key={tag.id}
                         type="button"
-                        className={`tag-chip${filtered ? " is-filtered" : ""}`}
+                        className="tag-chip"
                         style={{
                           background: cssColorFor(style.color),
                           color: style.textColor,
                         }}
                         draggable
                         title={tag.name}
-                        onClick={() => void toggleTagFilter(tag.id)}
                         onContextMenu={(e) => {
                           e.preventDefault();
                           openMenu(e.clientX, e.clientY, tagMenu(group, tag));
