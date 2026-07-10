@@ -692,12 +692,6 @@ select.lg-input option {
   color: var(--lg-text-faint);
 }
 
-.tag-group-empty {
-  font-size: 12px;
-  color: var(--lg-text-faint);
-  padding: 2px 4px;
-}
-
 .tag-chips {
   display: flex;
   flex-wrap: wrap;

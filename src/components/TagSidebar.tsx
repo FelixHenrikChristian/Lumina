@@ -70,13 +70,6 @@ export function TagSidebar() {
 
   const groupMenu = (group: TagGroup) => [
     {
-      key: "add-tag",
-      label: t("AddTag"),
-      icon: <PlusIcon />,
-      onSelect: () =>
-        setTagDraft({ groupId: group.id, tag: null, defaultColor: group.defaultColor }),
-    },
-    {
       key: "edit",
       label: t("EditGroup"),
       icon: <EditIcon />,
@@ -195,9 +188,6 @@ export function TagSidebar() {
               </div>
               {!isCollapsed && (
                 <div className="tag-chips">
-                  {group.tags.length === 0 && (
-                    <span className="tag-group-empty">{t("GroupEmpty")}</span>
-                  )}
                   {group.tags.map((tag) => {
                     const style = tagStyleFor(tagStyles, tag.name);
                     return (
