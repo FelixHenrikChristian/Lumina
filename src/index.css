@@ -239,18 +239,67 @@ select.lg-input option {
   padding: 16px;
 }
 
+.app-sidebar-frame,
+.app-main-frame {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+
+.app-sidebar-frame {
+  flex: none;
+  width: 300px;
+  opacity: 1;
+  visibility: visible;
+  transition:
+    width 0.28s ease,
+    opacity 0.16s ease 0.08s,
+    visibility 0s linear 0s;
+}
+
+.sidebar-collapsed .app-sidebar-frame {
+  width: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    width 0.28s ease,
+    opacity 0.16s ease,
+    visibility 0s linear 0.28s;
+}
+
+@media (max-width: 900px) {
+  .app-sidebar-frame {
+    width: 240px;
+  }
+}
+
+.structural-liquid-glass,
+.structural-liquid-glass > .glass,
+.structural-liquid-glass > .glass > div {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.structural-liquid-glass > .glass {
+  display: flex !important;
+}
+
+.structural-liquid-glass > .glass > div {
+  display: flex;
+  flex: 1;
+  font: inherit !important;
+  text-shadow: none !important;
+}
+
 .app-sidebar {
   display: flex;
   flex-direction: column;
-  flex: none;
-  width: 300px;
+  width: 100%;
+  height: 100%;
   min-height: 0;
   padding: 16px 14px 12px;
-  transition:
-    width 0.28s ease,
-    padding 0.28s ease,
-    opacity 0.16s ease 0.08s,
-    visibility 0s linear 0s;
 }
 
 /* Children keep the expanded content width (sidebar width minus its
@@ -259,24 +308,7 @@ select.lg-input option {
   width: 272px;
 }
 
-.sidebar-collapsed .app-sidebar {
-  width: 0;
-  padding-left: 0;
-  padding-right: 0;
-  opacity: 0;
-  visibility: hidden;
-  transition:
-    width 0.28s ease,
-    padding 0.28s ease,
-    opacity 0.16s ease,
-    visibility 0s linear 0.28s;
-}
-
 @media (max-width: 900px) {
-  .app-sidebar {
-    width: 240px;
-  }
-
   .app-sidebar > * {
     width: 212px;
   }
@@ -323,10 +355,15 @@ select.lg-input option {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--lg-accent) 55%, transparent);
 }
 
+.app-main-frame {
+  flex: 1;
+}
+
 .app-main {
   display: flex;
   flex-direction: column;
-  flex: 1;
+  width: 100%;
+  height: 100%;
   min-width: 0;
   min-height: 0;
 }

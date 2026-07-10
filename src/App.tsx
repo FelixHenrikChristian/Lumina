@@ -5,6 +5,7 @@ import { LocationSidebar } from "./components/LocationSidebar";
 import { TagSidebar } from "./components/TagSidebar";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { FileExplorer } from "./components/FileExplorer";
+import { StaticLiquidGlassSurface } from "./components/StaticLiquidGlassSurface";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -23,6 +24,7 @@ export default function App() {
   const t = useT();
   const sidebarView = useLumina((s) => s.settings.sidebarView);
   const sidebarCollapsed = useLumina((s) => s.settings.sidebarCollapsed);
+  const glass = useLumina((s) => s.settings.glass);
   const customWallpaper = useLumina((s) => s.settings.customWallpaper);
   const setSidebarView = useLumina((s) => s.setSidebarView);
   const toggleSidebar = useLumina((s) => s.toggleSidebar);
@@ -69,38 +71,42 @@ export default function App() {
         aria-hidden="true"
       />
       <div className={`app-shell${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
-        <aside id="app-sidebar" className="app-sidebar lg-panel" inert={sidebarCollapsed}>
-          <div className="sidebar-brand">
-            <span className="sidebar-brand-mark" />
-            {t("AppTitle")}
-            <button
-              type="button"
-              className="nav-button settings-button"
-              title={t("Settings")}
-              aria-haspopup="dialog"
-              onClick={() => setSettingsOpen(true)}
-            >
-              <SettingsIcon />
-            </button>
-          </div>
-          <nav className="sidebar-tabs" role="tablist">
-            {SIDEBAR_TABS.map(({ view, labelKey, Icon }) => (
-              <button
-                key={view}
-                type="button"
-                role="tab"
-                aria-selected={sidebarView === view}
-                className={`sidebar-tab${sidebarView === view ? " is-active" : ""}`}
-                onClick={() => setSidebarView(view)}
-              >
-                <Icon size={15} />
-                {t(labelKey)}
-              </button>
-            ))}
-          </nav>
-          {sidebarView === "locations" && <LocationSidebar />}
-          {sidebarView === "tags" && <TagSidebar />}
-        </aside>
+        <div className="app-sidebar-frame">
+          <StaticLiquidGlassSurface glass={glass} className="sidebar-liquid-glass">
+            <aside id="app-sidebar" className="app-sidebar" inert={sidebarCollapsed}>
+              <div className="sidebar-brand">
+                <span className="sidebar-brand-mark" />
+                {t("AppTitle")}
+                <button
+                  type="button"
+                  className="nav-button settings-button"
+                  title={t("Settings")}
+                  aria-haspopup="dialog"
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  <SettingsIcon />
+                </button>
+              </div>
+              <nav className="sidebar-tabs" role="tablist">
+                {SIDEBAR_TABS.map(({ view, labelKey, Icon }) => (
+                  <button
+                    key={view}
+                    type="button"
+                    role="tab"
+                    aria-selected={sidebarView === view}
+                    className={`sidebar-tab${sidebarView === view ? " is-active" : ""}`}
+                    onClick={() => setSidebarView(view)}
+                  >
+                    <Icon size={15} />
+                    {t(labelKey)}
+                  </button>
+                ))}
+              </nav>
+              {sidebarView === "locations" && <LocationSidebar />}
+              {sidebarView === "tags" && <TagSidebar />}
+            </aside>
+          </StaticLiquidGlassSurface>
+        </div>
         <button
           type="button"
           className="shell-handle"
@@ -114,9 +120,13 @@ export default function App() {
             {sidebarCollapsed ? <ChevronRightIcon size={13} /> : <ChevronLeftIcon size={13} />}
           </span>
         </button>
-        <main className="app-main lg-panel">
-          <FileExplorer />
-        </main>
+        <div className="app-main-frame">
+          <StaticLiquidGlassSurface glass={glass} className="main-liquid-glass">
+            <main className="app-main">
+              <FileExplorer />
+            </main>
+          </StaticLiquidGlassSurface>
+        </div>
       </div>
       {settingsOpen && <SettingsDialog onDismiss={() => setSettingsOpen(false)} />}
     </OverlayProvider>
