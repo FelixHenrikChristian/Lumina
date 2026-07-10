@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -11,8 +12,18 @@ import {
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = (relativePath: string) => readFileSync(join(root, relativePath), "utf8");
+const readBytes = (relativePath: string) => readFileSync(join(root, relativePath));
 const packageJson = JSON.parse(read("package.json"));
 const packageLock = JSON.parse(read("package-lock.json"));
+
+const pngInfo = (bytes: Buffer) => {
+  assert.deepEqual([...bytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  return {
+    width: bytes.readUInt32BE(16),
+    height: bytes.readUInt32BE(20),
+    colorType: bytes[25],
+  };
+};
 
 test("release metadata has one public 1.0.0 identity", () => {
   assert.equal(packageJson.version, "1.0.0");
@@ -47,6 +58,24 @@ test("Windows packages use explicit icons and stable artifact names", () => {
   assert.equal(build.portable.artifactName, "Lumina-Portable-${version}.${ext}");
   assert.equal(existsSync(join(root, "build", "icon.ico")), true);
   assert.equal(existsSync(join(root, "build", "icon.png")), true);
+});
+
+test("release icons use the transparent Lumina artwork at desktop and browser sizes", () => {
+  const desktopIcon = readBytes("build/icon.png");
+  const windowsIcon = readBytes("build/icon.ico");
+  const favicon = readBytes("public/favicon.png");
+
+  assert.deepEqual(pngInfo(desktopIcon), { width: 1024, height: 1024, colorType: 6 });
+  assert.deepEqual(pngInfo(favicon), { width: 256, height: 256, colorType: 6 });
+  assert.notEqual(
+    createHash("sha256").update(desktopIcon).digest("hex"),
+    "6413bfe9d546e5225fc9256a0ecec48df3a1272ea4bdc91c15b8e000222a95d3",
+  );
+  assert.equal(windowsIcon.readUInt16LE(0), 0);
+  assert.equal(windowsIcon.readUInt16LE(2), 1);
+  assert.ok(windowsIcon.readUInt16LE(4) >= 8);
+  assert.match(read("index.html"), /<link rel="icon" type="image\/png" href="\/favicon\.png" \/>/);
+  assert.equal(existsSync(join(root, "public", "favicon.svg")), false);
 });
 
 test("release tags are strict and match package versions", () => {
