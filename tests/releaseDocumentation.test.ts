@@ -37,7 +37,8 @@ test("privacy and security documents describe the unsigned local application", (
   assert.match(privacy, /does not include telemetry/i);
   assert.match(security, /private vulnerability reporting/i);
   assert.match(security, /unsigned/i);
-  assert.match(security, /SHA256SUMS\.txt/);
+  assert.match(security, /SHA-256 digest/i);
+  assert.doesNotMatch(security, /SHA256SUMS\.txt/);
 });
 
 test("support, notices, and changelog point users to the right resources", () => {

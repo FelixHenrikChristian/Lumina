@@ -21,13 +21,13 @@ Lumina 1.0.0 Windows executables are unsigned. Windows may display an Unknown
 Publisher or SmartScreen warning. Download binaries only from the official
 [GitHub Releases page](https://github.com/FelixHenrikChristian/Lumina/releases).
 
-Every release includes `SHA256SUMS.txt`. Compare the SHA-256 value of your download
-with that file before running it:
+GitHub displays an immutable SHA-256 digest next to each uploaded release asset.
+Calculate the digest of your download and compare it with the value shown on the
+official release page before running it:
 
 ```powershell
 Get-FileHash .\Lumina-Setup-1.0.0.exe -Algorithm SHA256
 ```
 
-A checksum detects corruption or an unexpected file, but it does not replace a
-digital signature. Treat a checksum copied from any unofficial location as
-untrusted.
+A digest detects corruption or an unexpected file, but it does not replace a
+digital signature. Treat a digest copied from any unofficial location as untrusted.

@@ -58,9 +58,6 @@ jobs:
       - name: Build Windows packages
         run: npm run pack:win
 
-      - name: Create SHA-256 checksums
-        run: node scripts/create-release-checksums.mjs
-
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7
         with:
@@ -68,7 +65,6 @@ jobs:
           path: |
             release/Lumina-Setup-*.exe
             release/Lumina-Portable-*.exe
-            release/SHA256SUMS.txt
           if-no-files-found: error
           compression-level: 0
           retention-days: 14
@@ -97,8 +93,7 @@ jobs:
 
           $assets = @(
             "release/Lumina-Setup-$version.exe",
-            "release/Lumina-Portable-$version.exe",
-            "release/SHA256SUMS.txt"
+            "release/Lumina-Portable-$version.exe"
           )
           gh release upload $tag $assets --clobber
           if ($LASTEXITCODE -ne 0) { throw "Could not upload release assets for $tag." }

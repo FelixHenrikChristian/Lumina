@@ -15,12 +15,11 @@ Lumina supports 64-bit Windows 10 and Windows 11.
   and includes an uninstaller.
 - `Lumina-Portable-1.0.0.exe` runs without installation. Preferences are still
   stored in the current Windows user's application-data directory.
-- `SHA256SUMS.txt` contains checksums for both executables.
 
 > [!WARNING]
 > Lumina 1.0.0 executables are unsigned. Windows may show an Unknown Publisher or
 > SmartScreen warning. Download them only from the official Releases page and
-> verify the SHA-256 checksum before running them.
+> compare the SHA-256 digest shown by GitHub before running them.
 
 ```powershell
 Get-FileHash .\Lumina-Setup-1.0.0.exe -Algorithm SHA256
@@ -77,7 +76,7 @@ validated against folder roots selected by the user.
 
 The release workflow runs on a `vX.Y.Z` tag. It verifies that the tag matches
 `package.json`, runs tests and the desktop smoke test on a GitHub-hosted Windows
-runner, builds both executables, generates checksums, and creates a **Draft Release**.
+runner, builds both executables, and creates a **Draft Release**.
 It never publishes the release automatically.
 
 For Lumina 1.0.0:
@@ -88,7 +87,7 @@ git push origin v1.0.0
 ```
 
 After the Action succeeds, open the generated draft on GitHub, check the release
-notes and all three attachments, then click **Publish release**.
+notes and both executable attachments, then click **Publish release**.
 
 ## Project information
 
