@@ -187,6 +187,7 @@ interface LuminaState {
   openFile(file: FileItem): Promise<void>;
   revealFile(file: FileItem): Promise<void>;
   getBlob(path: string): Promise<Blob | null>;
+  getThumbnail(path: string): Promise<string | null>;
 }
 
 function buildTagStyles(groups: readonly TagGroup[]): Map<string, TagStyle> {
@@ -940,6 +941,11 @@ export const useLumina = create<LuminaState>((set, get) => {
       const browser = await currentBrowser().catch(() => null);
       if (!browser) return null;
       return browser.getFileBlob(path).catch(() => null);
+    },
+    async getThumbnail(path) {
+      const browser = await currentBrowser().catch(() => null);
+      if (!browser?.getThumbnail) return null;
+      return browser.getThumbnail(path).catch(() => null);
     },
   };
 });

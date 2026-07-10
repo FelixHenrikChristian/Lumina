@@ -2,7 +2,7 @@
 // (contextIsolation, no nodeIntegration); every filesystem capability is
 // an explicit IPC handler here, and paths are validated against roots the
 // user picked (or re-registered from saved locations) before any fs call.
-const { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, nativeImage, net, protocol, shell } = require("electron");
 const crypto = require("node:crypto");
 const nodeFs = require("node:fs");
 const fs = require("node:fs/promises");
@@ -10,6 +10,7 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { execFile, spawn } = require("node:child_process");
 const { promisify } = require("node:util");
+const { thumbnailDataUrlForPath } = require("./thumbnail.cjs");
 
 const execFileAsync = promisify(execFile);
 
@@ -727,6 +728,10 @@ function registerIpc() {
     // exactly the file bytes.
     return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
   });
+
+  ipcMain.handle("lumina:thumbnail", async (_event, filePath) =>
+    thumbnailDataUrlForPath(assertAllowed(filePath), nativeImage),
+  );
 
   ipcMain.handle("lumina:openPath", async (_event, targetPath) => {
     const target = assertAllowed(targetPath);

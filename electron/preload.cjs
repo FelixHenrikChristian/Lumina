@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld("luminaNative", {
   redoNativePaste: () => ipcRenderer.invoke("lumina:redoNativePaste"),
   restoreDeleted: (paths) => ipcRenderer.invoke("lumina:restoreDeleted", paths),
   readFile: (filePath) => ipcRenderer.invoke("lumina:readFile", filePath),
+  thumbnail: (filePath) => ipcRenderer.invoke("lumina:thumbnail", filePath),
   openPath: (targetPath) => ipcRenderer.invoke("lumina:openPath", targetPath),
   reveal: (targetPath) => ipcRenderer.invoke("lumina:reveal", targetPath),
 });

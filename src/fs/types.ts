@@ -52,6 +52,8 @@ export interface FileBrowserService {
   pathExists?(path: string): Promise<boolean>;
   /** Blob for previews/open; null when unavailable. */
   getFileBlob(path: string): Promise<Blob | null>;
+  /** Native desktop preview supplied by the operating system; null when unavailable. */
+  getThumbnail?(path: string): Promise<string | null>;
   /** Opens a file with the platform default app. Desktop adapter only. */
   openExternally?(path: string): Promise<boolean>;
   /** Shows the item in the platform file manager. Desktop adapter only. */

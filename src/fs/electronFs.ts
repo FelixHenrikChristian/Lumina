@@ -173,6 +173,10 @@ export class ElectronFileBrowser implements FileBrowserService {
     }
   }
 
+  async getThumbnail(path: string): Promise<string | null> {
+    return nativeApi().thumbnail(this.toNative(path));
+  }
+
   /** Opens a file with its Windows default app (explorer double-click). */
   async openExternally(path: string): Promise<boolean> {
     return nativeApi().openPath(this.toNative(path));

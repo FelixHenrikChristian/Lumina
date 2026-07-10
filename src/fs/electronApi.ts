@@ -34,6 +34,7 @@ export interface LuminaNativeApi {
   redoNativePaste(): Promise<{ handled: boolean }>;
   restoreDeleted(paths: string[]): Promise<void>;
   readFile(filePath: string): Promise<ArrayBuffer>;
+  thumbnail(filePath: string): Promise<string | null>;
   openPath(targetPath: string): Promise<boolean>;
   reveal(targetPath: string): Promise<boolean>;
 }
