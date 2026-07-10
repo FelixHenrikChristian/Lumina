@@ -1272,6 +1272,18 @@ select.lg-input option {
   white-space: nowrap;
 }
 
+.file-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.file-name-row .file-name {
+  flex: 1;
+  min-width: 0;
+}
+
 .file-meta {
   font-size: 11px;
   color: var(--lg-text-faint);
@@ -1281,8 +1293,23 @@ select.lg-input option {
 }
 
 .file-parent {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 0;
+  padding: 0;
+  background: transparent;
   color: var(--lg-accent);
-  margin-right: 6px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.file-parent:hover {
+  text-decoration: underline;
 }
 
 .file-rename {

@@ -19,6 +19,7 @@ import {
 } from "../core/models";
 import { formatModified, formatSize } from "../core/format";
 import { getDisplayNameWithoutExtension } from "../core/tagParser";
+import { searchResultParentPath } from "./searchResultNavigation";
 import { useLazyThumbnail } from "./useThumbnail";
 import {
   endTagDrag,
@@ -897,6 +898,7 @@ function FileCard({
     !file.isDirectory && hideExtension
       ? getDisplayNameWithoutExtension(file.name)
       : file.displayName;
+  const parentPath = searchResultParentPath(file, showParent);
 
   const select = (event: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }) => {
     const state = useLumina.getState();
@@ -1039,15 +1041,27 @@ function FileCard({
           <RenameInput file={file} onComplete={onRenameComplete} />
         ) : (
           <>
-            <span className="file-name" title={file.name}>
-              {displayName}
-            </span>
-            <span className="file-meta">
-              {showParent && file.relativePath && file.relativePath !== "." && (
-                <span className="file-parent" title={file.relativePath}>
+            <div className="file-name-row">
+              {parentPath && (
+                <button
+                  type="button"
+                  className="file-parent"
+                  title={t("OpenContainingFolder", file.relativePath)}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onDoubleClick={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void useLumina.getState().openDirectory(parentPath);
+                  }}
+                >
                   {file.relativePath}
-                </span>
+                </button>
               )}
+              <span className="file-name" title={file.name}>
+                {displayName}
+              </span>
+            </div>
+            <span className="file-meta">
               {file.isDirectory ? t("Folder") : formatSize(file.size)}
               {file.modified !== null && ` · ${formatModified(file.modified)}`}
             </span>
