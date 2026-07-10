@@ -320,6 +320,15 @@ function ExplorerToolbar({
   const canGoUp = scope !== null && scope.tryGetParentPath(currentPath) !== null;
   const locationName =
     locations.find((l) => l.id === selectedLocationId)?.name ?? "";
+  const searchScopeName = useMemo(() => {
+    if (!scope || !currentPath) return locationName;
+    try {
+      const breadcrumbs = scope.getBreadcrumbs(currentPath, locationName);
+      return breadcrumbs.at(-1)?.name ?? locationName;
+    } catch {
+      return locationName;
+    }
+  }, [scope, currentPath, locationName]);
 
   const onSearchChange = (value: string) => {
     useLumina.getState().setSearchQuery(value);
@@ -374,7 +383,7 @@ function ExplorerToolbar({
         <input
           ref={searchRef}
           type="search"
-          placeholder={locationName ? t("SearchInFolder", locationName) : t("Search")}
+          placeholder={searchScopeName ? t("SearchInFolder", searchScopeName) : t("Search")}
           value={searchQuery}
           onChange={(e) => onSearchChange(e.currentTarget.value)}
           onKeyDown={(e) => {
