@@ -10,6 +10,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import LiquidGlass from "../vendor/liquid-glass";
+import { LiquidGlassButton } from "./LiquidGlassButton";
 import { useLumina } from "../state/store";
 
 // ---------------------------------------------------------------------------
@@ -285,17 +286,16 @@ export function ConfirmDialog({
     <GlassDialog title={title} onDismiss={onCancel} width={380}>
       <p className="lg-dialog-message">{message}</p>
       <div className="lg-dialog-actions">
-        <button type="button" className="lg-button" onClick={onCancel}>
+        <LiquidGlassButton onClick={onCancel}>
           {cancelLabel}
-        </button>
-        <button
-          type="button"
-          className={`lg-button ${danger ? "is-danger" : "is-primary"}`}
+        </LiquidGlassButton>
+        <LiquidGlassButton
+          variant={danger ? "danger" : "primary"}
           onClick={onConfirm}
           autoFocus
         >
           {confirmLabel}
-        </button>
+        </LiquidGlassButton>
       </div>
     </GlassDialog>
   );

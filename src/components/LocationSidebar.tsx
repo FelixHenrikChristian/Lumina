@@ -4,6 +4,7 @@ import { addDemoLocation, addRealLocation, canAddRealFolder } from "./locationAc
 import { useOverlay } from "./overlays";
 import { ConfirmDialog } from "./overlays";
 import { FolderIcon, MoreIcon, PlusIcon, TrashIcon, EditIcon } from "./icons";
+import { LiquidGlassButton } from "./LiquidGlassButton";
 
 export function LocationSidebar() {
   const t = useT();
@@ -117,15 +118,19 @@ export function LocationSidebar() {
       </div>
 
       <footer className="sidebar-footer">
-        <button type="button" className="lg-chip" onClick={addDemoLocation}>
+        <LiquidGlassButton size="compact" onClick={addDemoLocation}>
           <PlusIcon size={12} />
           {t("AddDemoLocation")}
-        </button>
+        </LiquidGlassButton>
         {locations.length > 0 && (
-          <button type="button" className="lg-chip" onClick={() => setConfirmClear(true)}>
+          <LiquidGlassButton
+            size="compact"
+            variant="danger"
+            onClick={() => setConfirmClear(true)}
+          >
             <TrashIcon size={12} />
             {t("ClearLocations")}
-          </button>
+          </LiquidGlassButton>
         )}
       </footer>
 

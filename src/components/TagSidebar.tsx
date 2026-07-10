@@ -11,6 +11,7 @@ import {
 import { exportTagLibrary, importTagLibrary } from "../core/tagTransfer";
 import { beginTagDrag, endTagDrag } from "./tagDrag";
 import { ConfirmDialog, GlassDialog, useOverlay } from "./overlays";
+import { LiquidGlassButton } from "./LiquidGlassButton";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -243,19 +244,30 @@ export function TagSidebar() {
       </div>
 
       <footer className="sidebar-footer">
-        <button type="button" className="lg-chip" onClick={exportLibrary} disabled={tagGroups.length === 0}>
+        <LiquidGlassButton
+          size="compact"
+          onClick={exportLibrary}
+          disabled={tagGroups.length === 0}
+        >
           <ExportIcon size={12} />
           {t("ExportTags")}
-        </button>
-        <button type="button" className="lg-chip" onClick={() => importInputRef.current?.click()}>
+        </LiquidGlassButton>
+        <LiquidGlassButton
+          size="compact"
+          onClick={() => importInputRef.current?.click()}
+        >
           <ImportIcon size={12} />
           {t("ImportTags")}
-        </button>
+        </LiquidGlassButton>
         {tagGroups.length > 0 && (
-          <button type="button" className="lg-chip" onClick={() => setConfirmClear(true)}>
+          <LiquidGlassButton
+            size="compact"
+            variant="danger"
+            onClick={() => setConfirmClear(true)}
+          >
             <TrashIcon size={12} />
             {t("ClearTags")}
-          </button>
+          </LiquidGlassButton>
         )}
         <input
           ref={importInputRef}
@@ -364,12 +376,12 @@ function GroupEditDialog({
         </label>
       </div>
       <div className="lg-dialog-actions">
-        <button type="button" className="lg-button" onClick={onCancel}>
+        <LiquidGlassButton onClick={onCancel}>
           {t("Cancel")}
-        </button>
-        <button type="button" className="lg-button is-primary" onClick={commit}>
+        </LiquidGlassButton>
+        <LiquidGlassButton variant="primary" onClick={commit}>
           {t("Save")}
-        </button>
+        </LiquidGlassButton>
       </div>
     </GlassDialog>
   );
@@ -424,12 +436,12 @@ function TagEditDialog({
         </label>
       </div>
       <div className="lg-dialog-actions">
-        <button type="button" className="lg-button" onClick={onCancel}>
+        <LiquidGlassButton onClick={onCancel}>
           {t("Cancel")}
-        </button>
-        <button type="button" className="lg-button is-primary" onClick={commit}>
+        </LiquidGlassButton>
+        <LiquidGlassButton variant="primary" onClick={commit}>
           {t("Save")}
-        </button>
+        </LiquidGlassButton>
       </div>
     </GlassDialog>
   );

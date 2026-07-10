@@ -185,6 +185,78 @@ body {
   transform: none;
 }
 
+/* A LiquidGlass instance renders several sibling layers. The semantic button
+   surface stays in normal flow while its tint, shine, and interaction layers
+   are stacked over it inside one flex item. */
+.liquid-glass-button {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  vertical-align: middle;
+  isolation: isolate;
+}
+
+.liquid-glass-button > :not(.liquid-glass-button-surface) {
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+}
+
+.liquid-glass-button-surface,
+.liquid-glass-button-surface > .glass,
+.liquid-glass-button-surface > .glass > div {
+  max-width: 100%;
+}
+
+.liquid-glass-button__control {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--lg-text);
+  padding: 8px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+}
+
+.liquid-glass-button--compact .liquid-glass-button__control {
+  gap: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+.liquid-glass-button--primary .liquid-glass-button__control,
+.liquid-glass-button--danger .liquid-glass-button__control {
+  font-weight: 600;
+}
+
+.liquid-glass-button--danger .liquid-glass-button__control {
+  color: var(--lg-danger);
+  background: color-mix(in srgb, var(--lg-danger) 10%, transparent);
+}
+
+.liquid-glass-button__control:focus-visible {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--lg-accent) 72%, transparent);
+}
+
+.liquid-glass-button.is-disabled {
+  opacity: 0.45;
+}
+
+.liquid-glass-button__control:disabled {
+  cursor: default;
+}
+
 .lg-input {
   border: 1px solid var(--lg-stroke);
   border-radius: var(--lg-radius-sm);

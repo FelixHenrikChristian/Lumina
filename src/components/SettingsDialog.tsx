@@ -11,6 +11,7 @@ import { DEFAULT_GLASS_CONFIG } from "../core/models";
 import { isElectron, nativeApi } from "../fs/electronApi";
 import { GlassDialog } from "./overlays";
 import { FolderIcon, RefreshIcon, SettingsIcon, TagIcon } from "./icons";
+import { LiquidGlassButton } from "./LiquidGlassButton";
 
 type SettingsCategory = "appearance" | "behavior" | "glass";
 
@@ -49,9 +50,9 @@ export function SettingsDialog({ onDismiss }: { onDismiss(): void }) {
         </div>
       </div>
       <div className="lg-dialog-actions">
-        <button type="button" className="lg-button is-primary" onClick={onDismiss}>
+        <LiquidGlassButton variant="primary" onClick={onDismiss}>
           {t("Close")}
-        </button>
+        </LiquidGlassButton>
       </div>
     </GlassDialog>
   );
@@ -102,17 +103,13 @@ function AppearancePane() {
           </span>
         </div>
         <div className="settings-action-row">
-          <button
-            type="button"
-            className="lg-button"
+          <LiquidGlassButton
             disabled={!canChooseWallpaper}
             onClick={() => void chooseWallpaper()}
           >
             {t("ChooseBackgroundImage")}
-          </button>
-          <button
-            type="button"
-            className="lg-button"
+          </LiquidGlassButton>
+          <LiquidGlassButton
             disabled={!settings.customWallpaper}
             onClick={() => {
               setWallpaperError(null);
@@ -120,7 +117,7 @@ function AppearancePane() {
             }}
           >
             {t("RestoreDefaultBackground")}
-          </button>
+          </LiquidGlassButton>
         </div>
         {!canChooseWallpaper && (
           <p className="settings-note">{t("DesktopWallpaperOnly")}</p>
@@ -311,14 +308,13 @@ function GlassPane() {
         </label>
 
         <div className="glass-reset-row">
-          <button
-            type="button"
-            className="lg-chip"
+          <LiquidGlassButton
+            size="compact"
             onClick={() => update(DEFAULT_GLASS_CONFIG)}
           >
             <RefreshIcon size={12} />
             {t("ResetDefaults")}
-          </button>
+          </LiquidGlassButton>
         </div>
       </section>
     </div>
