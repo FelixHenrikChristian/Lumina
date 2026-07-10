@@ -1,0 +1,104 @@
+name: Build release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-windows:
+    name: Build Windows release
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Verify release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/verify-release.mjs --tag "$env:RELEASE_TAG"
+
+      - name: Verify package version
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: node scripts/verify-release.mjs
+
+      - name: Run tests
+        run: npm test
+
+      - name: Run static checks
+        run: npm run lint
+
+      - name: Build renderer
+        run: npm run build
+
+      - name: Run desktop smoke test
+        run: npm run app:smoke
+
+      - name: Build Windows packages
+        run: npm run pack:win
+
+      - name: Create SHA-256 checksums
+        run: node scripts/create-release-checksums.mjs
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Lumina-${{ github.run_id }}
+          path: |
+            release/Lumina-Setup-*.exe
+            release/Lumina-Portable-*.exe
+            release/SHA256SUMS.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+      - name: Upload files to draft release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tag = $env:RELEASE_TAG
+          $version = node -p "require('./package.json').version"
+          $releaseJson = gh release view $tag --json isDraft 2>$null
+
+          if ($LASTEXITCODE -eq 0) {
+            $release = $releaseJson | ConvertFrom-Json
+            if (-not $release.isDraft) {
+              throw "Release $tag is already published; refusing to replace its assets."
+            }
+          } else {
+            gh release create $tag --draft --verify-tag --generate-notes --title "Lumina $version"
+            if ($LASTEXITCODE -ne 0) { throw "Could not create draft release $tag." }
+          }
+
+          $assets = @(
+            "release/Lumina-Setup-$version.exe",
+            "release/Lumina-Portable-$version.exe",
+            "release/SHA256SUMS.txt"
+          )
+          gh release upload $tag $assets --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Could not upload release assets for $tag." }
