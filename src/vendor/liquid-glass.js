@@ -1,5 +1,6 @@
 // src/index.tsx
-import { forwardRef, useCallback, useEffect, useId, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { EMPTY_LIQUID_GLASS_SIZE, hasRenderableLiquidGlassSize } from "./liquid-glass-size";
 
 // src/shader-utils.ts
 function smoothStep(a, b, t) {
@@ -206,25 +207,28 @@ var GlassContainer = forwardRef(
     overLight = false,
     cornerRadius = 999,
     padding = "24px 32px",
-    glassSize = { width: 270, height: 69 },
+    glassSize = EMPTY_LIQUID_GLASS_SIZE,
     onClick,
     mode = "standard"
   }, ref) => {
     const filterId = useId();
     const [shaderMapUrl, setShaderMapUrl] = useState("");
     const isFirefox = navigator.userAgent.toLowerCase().includes("firefox");
+    const hasGlassSize = hasRenderableLiquidGlassSize(glassSize);
     useEffect(() => {
-      if (mode === "shader") {
+      if (mode === "shader" && hasGlassSize) {
         const url = generateShaderDisplacementMap(glassSize.width, glassSize.height);
         setShaderMapUrl(url);
+      } else {
+        setShaderMapUrl("");
       }
-    }, [mode, glassSize.width, glassSize.height]);
+    }, [mode, glassSize.width, glassSize.height, hasGlassSize]);
     const backdropStyle = {
-      filter: isFirefox ? null : `url(#${filterId})`,
+      filter: isFirefox || !hasGlassSize ? null : `url(#${filterId})`,
       backdropFilter: `blur(${(overLight ? 12 : 4) + blurAmount * 32}px) saturate(${saturation}%)`
     };
     return /* @__PURE__ */ jsxs("div", { ref, className: `relative ${className} ${active ? "active" : ""} ${Boolean(onClick) ? "cursor-pointer" : ""}`, style, onClick, children: [
-      /* @__PURE__ */ jsx(GlassFilter, { mode, id: filterId, displacementScale, aberrationIntensity, width: glassSize.width, height: glassSize.height, shaderMapUrl }),
+      hasGlassSize && /* @__PURE__ */ jsx(GlassFilter, { mode, id: filterId, displacementScale, aberrationIntensity, width: glassSize.width, height: glassSize.height, shaderMapUrl }),
       /* @__PURE__ */ jsxs(
         "div",
         {
@@ -302,7 +306,7 @@ function LiquidGlass({
   const glassRef = useRef(null);
   const [isHovered, setIsHovered] = useState(false);
   const [isActive, setIsActive] = useState(false);
-  const [glassSize, setGlassSize] = useState({ width: 270, height: 69 });
+  const [glassSize, setGlassSize] = useState(EMPTY_LIQUID_GLASS_SIZE);
   const [internalGlobalMousePos, setInternalGlobalMousePos] = useState({ x: 0, y: 0 });
   const [internalMouseOffset, setInternalMouseOffset] = useState({ x: 0, y: 0 });
   const globalMousePos = externalGlobalMousePos || internalGlobalMousePos;
@@ -401,7 +405,7 @@ function LiquidGlass({
       y: (globalMousePos.y - pillCenterY) * elasticity * 0.1 * fadeInFactor
     };
   }, [globalMousePos, elasticity, calculateFadeInFactor]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = glassRef.current;
     if (!el) {
       return;
@@ -412,7 +416,9 @@ function LiquidGlass({
     // (the upstream code only re-measured on window resize, leaving a stale
     // ghost rectangle behind panels whose content grew or shrank).
     const updateGlassSize = () => {
-      setGlassSize({ width: el.offsetWidth, height: el.offsetHeight });
+      const width = el.offsetWidth;
+      const height = el.offsetHeight;
+      setGlassSize((current) => current.width === width && current.height === height ? current : { width, height });
     };
     updateGlassSize();
     const observer = new ResizeObserver(updateGlassSize);
@@ -437,8 +443,9 @@ function LiquidGlass({
     overflow: "hidden",
     clipPath: `inset(0 round ${cornerRadius}px)`
   };
+  const hasGlassSize = hasRenderableLiquidGlassSize(glassSize);
   return /* @__PURE__ */ jsxs(Fragment, { children: [
-    /* @__PURE__ */ jsx(
+    hasGlassSize && /* @__PURE__ */ jsx(
       "div",
       {
         className: `bg-black transition-all duration-150 ease-in-out pointer-events-none ${overLight ? "opacity-20" : "opacity-0"}`,
@@ -452,7 +459,7 @@ function LiquidGlass({
         }
       }
     ),
-    /* @__PURE__ */ jsx(
+    hasGlassSize && /* @__PURE__ */ jsx(
       "div",
       {
         className: `bg-black transition-all duration-150 ease-in-out pointer-events-none mix-blend-overlay ${overLight ? "opacity-100" : "opacity-0"}`,
@@ -491,7 +498,7 @@ function LiquidGlass({
         children
       }
     ),
-    /* @__PURE__ */ jsx(
+    hasGlassSize && /* @__PURE__ */ jsx(
       "span",
       {
         style: {
@@ -519,7 +526,7 @@ function LiquidGlass({
         }
       }
     ),
-    /* @__PURE__ */ jsx(
+    hasGlassSize && /* @__PURE__ */ jsx(
       "span",
       {
         style: {
@@ -546,7 +553,7 @@ function LiquidGlass({
         }
       }
     ),
-    Boolean(onClick) && /* @__PURE__ */ jsxs(Fragment, { children: [
+    hasGlassSize && Boolean(onClick) && /* @__PURE__ */ jsxs(Fragment, { children: [
       /* @__PURE__ */ jsx(
         "div",
         {
