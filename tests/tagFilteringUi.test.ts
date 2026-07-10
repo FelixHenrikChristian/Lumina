@@ -22,14 +22,18 @@ test("the explorer filter popover owns a persistent clear action", () => {
   assert.match(explorer, /void clearTagFilters\(\)/);
 });
 
-test("inactive filter tags use a neutral style while active tags keep their colors", () => {
+test("inactive filter tags keep a subtle tint while active tags keep their full colors", () => {
   assert.match(
     explorer,
     /className=\{`tag-chip tag-filter-chip\$\{active \? " is-filtered" : ""\}`\}/,
   );
+  assert.match(explorer, /"--tag-filter-color": cssColorFor\(style\.color\)/);
   assert.match(
     explorer,
-    /style=\{active \? \{ background: cssColorFor\(style\.color\), color: style\.textColor \} : undefined\}/,
+    /active\s*\?\s*\{\s*background: cssColorFor\(style\.color\),\s*color: style\.textColor\s*\}\s*:\s*\{\}/,
   );
-  assert.match(css, /\.tag-filter-chip:not\(\.is-filtered\)/);
+  assert.match(
+    css,
+    /background: color-mix\(in srgb, var\(--tag-filter-color\) 25%, var\(--lg-glass-tint-strong\)\)/,
+  );
 });

@@ -1353,7 +1353,7 @@ select.lg-input option {
 }
 
 .tag-filter-chip:not(.is-filtered) {
-  background: color-mix(in srgb, var(--lg-text-faint) 20%, var(--lg-glass-tint));
+  background: color-mix(in srgb, var(--tag-filter-color) 25%, var(--lg-glass-tint-strong));
   color: var(--lg-text-dim);
   border-color: var(--lg-stroke);
   box-shadow: none;

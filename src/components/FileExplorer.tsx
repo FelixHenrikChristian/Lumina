@@ -816,7 +816,14 @@ function TagFilterPopover({ anchor, onClose }: { anchor: HTMLElement; onClose():
                         key={tag.id}
                         type="button"
                         className={`tag-chip tag-filter-chip${active ? " is-filtered" : ""}`}
-                        style={active ? { background: cssColorFor(style.color), color: style.textColor } : undefined}
+                        style={
+                          {
+                            "--tag-filter-color": cssColorFor(style.color),
+                            ...(active
+                              ? { background: cssColorFor(style.color), color: style.textColor }
+                              : {}),
+                          } as CSSProperties
+                        }
                         onClick={() => void toggleTagFilter(tag.id)}
                       >
                         {active && <CheckIcon size={11} />}
