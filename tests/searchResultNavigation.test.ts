@@ -47,3 +47,9 @@ test("search result parent links precede filenames and open the containing direc
   assert.match(fileInfo, /onPointerDown=\{\(event\) => event\.stopPropagation\(\)\}/);
   assert.match(css, /\.file-name-row/);
 });
+
+test("search result parent links keep the original compact text style", () => {
+  const parentRule = css.match(/\.file-parent\s*\{([^}]*)\}/)?.[1] ?? "";
+  assert.match(parentRule, /font-size:\s*11px/);
+  assert.doesNotMatch(css, /\.file-parent:hover/);
+});

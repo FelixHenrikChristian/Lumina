@@ -1298,12 +1298,9 @@ select.lg-input option {
   background: transparent;
   color: var(--lg-accent);
   font: inherit;
+  font-size: 11px;
   text-align: left;
   cursor: pointer;
-}
-
-.file-parent:hover {
-  text-decoration: underline;
 }
 
 .file-rename {
