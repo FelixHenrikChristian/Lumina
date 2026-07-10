@@ -24,7 +24,9 @@ test("GitHub Actions builds two executables and creates only a draft release", (
   assert.match(workflow, /npm run app:smoke/);
   assert.match(workflow, /npm run pack:win/);
   assert.match(workflow, /release\/Lumina-Setup-\*\.exe/);
+  assert.match(workflow, /release\/Lumina-Setup-\*\.exe\.blockmap/);
   assert.match(workflow, /release\/Lumina-Portable-\*\.exe/);
+  assert.match(workflow, /release\/latest\.yml/);
   assert.doesNotMatch(workflow, /SHA256SUMS|create-release-checksums/);
   assert.equal(existsSync(join(root, "scripts", "create-release-checksums.mjs")), false);
   assert.match(workflow, /RELEASE_TAG:\s*\$\{\{ github\.ref_name \}\}/);

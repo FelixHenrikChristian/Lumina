@@ -12,6 +12,26 @@ export interface NativeEntry {
   readonly modified: number | null;
 }
 
+export type AppUpdateStatus =
+  | "disabled"
+  | "idle"
+  | "checking"
+  | "available"
+  | "up-to-date"
+  | "downloading"
+  | "downloaded"
+  | "installing"
+  | "error";
+
+export interface AppUpdateState {
+  readonly status: AppUpdateStatus;
+  readonly mode: "development" | "installed" | "portable";
+  readonly currentVersion: string;
+  readonly availableVersion: string | null;
+  readonly progressPercent: number | null;
+  readonly error: string | null;
+}
+
 export interface LuminaNativeApi {
   chooseWallpaper(): Promise<CustomWallpaper | null>;
   pickFolder(): Promise<{ path: string; name: string } | null>;
@@ -37,6 +57,12 @@ export interface LuminaNativeApi {
   thumbnail(filePath: string): Promise<string | null>;
   openPath(targetPath: string): Promise<boolean>;
   reveal(targetPath: string): Promise<boolean>;
+  getUpdateState(): Promise<AppUpdateState>;
+  checkForUpdates(): Promise<AppUpdateState>;
+  downloadUpdate(): Promise<AppUpdateState>;
+  installUpdate(): Promise<boolean>;
+  openUpdatePage(): Promise<boolean>;
+  onUpdateState(callback: (state: AppUpdateState) => void): () => void;
 }
 
 declare global {

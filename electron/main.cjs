@@ -11,6 +11,7 @@ const { pathToFileURL } = require("node:url");
 const { execFile, spawn } = require("node:child_process");
 const { promisify } = require("node:util");
 const { thumbnailDataUrlForPath } = require("./thumbnail.cjs");
+const { createUpdateController } = require("./updater.cjs");
 
 const execFileAsync = promisify(execFile);
 
@@ -24,6 +25,7 @@ const nativeRedoStack = [];
 let clipboardWorker = null;
 let clipboardWorkerOutput = "";
 const clipboardWorkerPending = [];
+let updateController = null;
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -801,7 +803,7 @@ function createWindow() {
         ]);
         if (!clipboardReady) throw new Error("Windows clipboard worker did not become ready.");
         const probe = await win.webContents.executeJavaScript(
-          "JSON.stringify({ title: document.title, bridge: typeof window.luminaNative, root: !!document.getElementById('root')?.childElementCount })",
+          "JSON.stringify({ title: document.title, bridge: typeof window.luminaNative, updates: typeof window.luminaNative?.getUpdateState === 'function', root: !!document.getElementById('root')?.childElementCount })",
         );
         console.log(`LUMINA_SMOKE_OK ${probe}`);
         process.exitCode = 0;
@@ -818,16 +820,22 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  updateController = createUpdateController();
+  updateController.registerIpc();
   registerWallpaperProtocol();
   registerIpc();
   startClipboardWorker();
   createWindow();
+  updateController.start();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
-app.on("before-quit", stopClipboardWorker);
+app.on("before-quit", () => {
+  updateController?.stop();
+  stopClipboardWorker();
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();

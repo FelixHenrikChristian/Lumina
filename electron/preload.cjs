@@ -31,4 +31,14 @@ contextBridge.exposeInMainWorld("luminaNative", {
   thumbnail: (filePath) => ipcRenderer.invoke("lumina:thumbnail", filePath),
   openPath: (targetPath) => ipcRenderer.invoke("lumina:openPath", targetPath),
   reveal: (targetPath) => ipcRenderer.invoke("lumina:reveal", targetPath),
+  getUpdateState: () => ipcRenderer.invoke("lumina:getUpdateState"),
+  checkForUpdates: () => ipcRenderer.invoke("lumina:checkForUpdates"),
+  downloadUpdate: () => ipcRenderer.invoke("lumina:downloadUpdate"),
+  installUpdate: () => ipcRenderer.invoke("lumina:installUpdate"),
+  openUpdatePage: () => ipcRenderer.invoke("lumina:openUpdatePage"),
+  onUpdateState: (callback) => {
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on("lumina:updateState", listener);
+    return () => ipcRenderer.removeListener("lumina:updateState", listener);
+  },
 });

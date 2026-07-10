@@ -17,17 +17,29 @@ public disclosure.
 
 ## Release authenticity
 
-Lumina 1.0.0 Windows executables are unsigned. Windows may display an Unknown
-Publisher or SmartScreen warning. Download binaries only from the official
-[GitHub Releases page](https://github.com/FelixHenrikChristian/Lumina/releases).
+Lumina's Windows executables are currently unsigned. Windows may display an
+Unknown Publisher or SmartScreen warning. Download binaries only from the
+official [GitHub Releases page](https://github.com/FelixHenrikChristian/Lumina/releases).
 
 GitHub displays an immutable SHA-256 digest next to each uploaded release asset.
 Calculate the digest of your download and compare it with the value shown on the
 official release page before running it:
 
 ```powershell
-Get-FileHash .\Lumina-Setup-1.0.0.exe -Algorithm SHA256
+Get-FileHash .\Lumina-Setup-*.exe -Algorithm SHA256
 ```
 
 A digest detects corruption or an unexpected file, but it does not replace a
 digital signature. Treat a digest copied from any unofficial location as untrusted.
+
+## Automatic update security
+
+Update-enabled installed builds retrieve release metadata and installers only from
+the official GitHub repository. The updater validates the installer's SHA-512 value
+against `latest.yml` before offering a restart. Draft releases remain invisible to
+clients until the maintainer reviews and publishes them.
+
+The current Windows binaries are still unsigned. Update metadata and hashes protect
+against accidental corruption, but they do not provide the publisher identity of a
+Windows code-signing certificate. Code signing is recommended before relying on
+unattended distribution.

@@ -8,20 +8,27 @@ import {
 } from "../core/localization";
 import type { GlassConfig, GlassMode } from "../core/models";
 import { DEFAULT_GLASS_CONFIG } from "../core/models";
-import { isElectron, nativeApi } from "../fs/electronApi";
+import { isElectron, nativeApi, type AppUpdateState } from "../fs/electronApi";
 import { GlassDialog } from "./overlays";
-import { FolderIcon, RefreshIcon, SettingsIcon, TagIcon } from "./icons";
+import { FolderIcon, InfoIcon, RefreshIcon, SettingsIcon, TagIcon } from "./icons";
 import { LiquidGlassButton } from "./LiquidGlassButton";
 
-type SettingsCategory = "appearance" | "behavior" | "glass";
+type SettingsCategory = "appearance" | "behavior" | "glass" | "about";
 
 const CATEGORIES: { key: SettingsCategory; labelKey: string; Icon: typeof FolderIcon }[] = [
   { key: "appearance", labelKey: "SettingsAppearance", Icon: FolderIcon },
   { key: "behavior", labelKey: "SettingsBehavior", Icon: TagIcon },
   { key: "glass", labelKey: "SettingsGlass", Icon: SettingsIcon },
+  { key: "about", labelKey: "SettingsAbout", Icon: InfoIcon },
 ];
 
-export function SettingsDialog({ onDismiss }: { onDismiss(): void }) {
+export function SettingsDialog({
+  onDismiss,
+  updateState,
+}: {
+  onDismiss(): void;
+  updateState: AppUpdateState | null;
+}) {
   const t = useT();
   const [category, setCategory] = useState<SettingsCategory>("appearance");
 
@@ -47,6 +54,7 @@ export function SettingsDialog({ onDismiss }: { onDismiss(): void }) {
           {category === "appearance" && <AppearancePane />}
           {category === "behavior" && <BehaviorPane />}
           {category === "glass" && <GlassPane />}
+          {category === "about" && <AboutPane updateState={updateState} />}
         </div>
       </div>
       <div className="lg-dialog-actions">
@@ -126,6 +134,138 @@ function AppearancePane() {
       </section>
     </div>
   );
+}
+
+function AboutPane({ updateState }: { updateState: AppUpdateState | null }) {
+  const t = useT();
+  const [actionError, setActionError] = useState<string | null>(null);
+  const busy = updateState !== null
+    && ["checking", "downloading", "installing"].includes(updateState.status);
+  const canCheck = updateState !== null && updateState.mode !== "development";
+  const stateError = updateState?.status === "error" ? updateState.error : null;
+
+  const run = async (action: () => Promise<unknown>) => {
+    setActionError(null);
+    try {
+      await action();
+    } catch (error) {
+      setActionError(t("UpdateActionFailed", message(error)));
+    }
+  };
+
+  return (
+    <div className="settings-dialog-body">
+      <section className="settings-section">
+        <h3>{t("AboutApplication")}</h3>
+        <div className="settings-row is-static">
+          <span>{t("CurrentVersion")}</span>
+          <span className="settings-row-value">{updateState?.currentVersion ?? "—"}</span>
+        </div>
+        <div className="settings-row is-static">
+          <span>{t("Distribution")}</span>
+          <span className="settings-row-value">
+            {updateState === null
+              ? "—"
+              : t(distributionLabel(updateState.mode))}
+          </span>
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <h3>{t("Updates")}</h3>
+        <div className="update-status-card" role="status" aria-live="polite">
+          {updateState === null ? t("UpdateDesktopOnly") : updateStatusText(updateState, t)}
+        </div>
+        {updateState?.status === "downloading" && (
+          <progress
+            className="update-progress"
+            max={100}
+            value={updateState.progressPercent ?? 0}
+            aria-label={t("UpdateDownloadingStatus", updateState.availableVersion ?? "", Math.round(updateState.progressPercent ?? 0))}
+          />
+        )}
+        <div className="settings-action-row update-actions">
+          {canCheck && (
+            <LiquidGlassButton
+              disabled={busy || updateState.status === "downloaded"}
+              onClick={() => void run(() => nativeApi().checkForUpdates())}
+            >
+              <RefreshIcon size={12} />
+              {t("CheckForUpdates")}
+            </LiquidGlassButton>
+          )}
+          {updateState?.status === "available" && updateState.mode === "installed" && (
+            <LiquidGlassButton
+              variant="primary"
+              onClick={() => void run(() => nativeApi().downloadUpdate())}
+            >
+              {t("DownloadUpdate")}
+            </LiquidGlassButton>
+          )}
+          {updateState?.status === "downloaded" && updateState.mode === "installed" && (
+            <LiquidGlassButton
+              variant="primary"
+              onClick={() => void run(() => nativeApi().installUpdate())}
+            >
+              {t("RestartAndInstall")}
+            </LiquidGlassButton>
+          )}
+          {(updateState === null
+            || updateState.mode !== "installed"
+            || updateState.status === "error") && isElectron() && (
+            <LiquidGlassButton onClick={() => void run(() => nativeApi().openUpdatePage())}>
+              {t("OpenReleasePage")}
+            </LiquidGlassButton>
+          )}
+        </div>
+        {updateState?.mode === "portable" && (
+          <p className="settings-note">{t("UpdatePortableNote")}</p>
+        )}
+        {updateState?.mode === "development" && (
+          <p className="settings-note">{t("UpdateDevelopmentStatus")}</p>
+        )}
+        {(stateError || actionError) && (
+          <p className="settings-error">{actionError ?? stateError}</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function distributionLabel(mode: AppUpdateState["mode"]): string {
+  if (mode === "installed") return "DistributionInstalled";
+  if (mode === "portable") return "DistributionPortable";
+  return "DistributionDevelopment";
+}
+
+function updateStatusText(
+  state: AppUpdateState,
+  t: ReturnType<typeof useT>,
+): string {
+  switch (state.status) {
+    case "disabled":
+      return t("UpdateDevelopmentStatus");
+    case "idle":
+      return t("UpdateReadyStatus");
+    case "checking":
+      return t("UpdateCheckingStatus");
+    case "available":
+      return t("UpdateAvailableStatus", state.availableVersion ?? "");
+    case "up-to-date":
+      return t("UpdateUpToDateStatus");
+    case "downloading":
+      return t(
+        "UpdateDownloadingStatus",
+        state.availableVersion ?? "",
+        Math.round(state.progressPercent ?? 0),
+      );
+    case "downloaded":
+      return t("UpdateDownloadedStatus", state.availableVersion ?? "");
+    case "installing":
+      return t("UpdateInstallingStatus");
+    case "error":
+      return t("UpdateErrorStatus");
+  }
 }
 
 function BehaviorPane() {

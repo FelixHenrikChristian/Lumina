@@ -11,6 +11,8 @@ remain in effect for their respective components.
   <https://github.com/facebook/react>
 - **Zustand** — Copyright (c) 2019 Paul Henschel —
   <https://github.com/pmndrs/zustand>
+- **electron-updater** — Copyright (c) 2015 Loopline Systems —
+  <https://github.com/electron-userland/electron-builder>
 - **liquid-glass-react** (adapted source in `src/vendor`) — Copyright 2025 MAX
   ROVENSKY — <https://github.com/rdev/liquid-glass-react>
 

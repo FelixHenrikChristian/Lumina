@@ -15,6 +15,7 @@ const requiredDocuments = [
   "SUPPORT.md",
   "CHANGELOG.md",
   "README.md",
+  "README.zh-CN.md",
 ];
 
 test("public release documentation is present", () => {
@@ -46,18 +47,36 @@ test("support, notices, and changelog point users to the right resources", () =>
   const notices = read("THIRD_PARTY_NOTICES.md");
   const changelog = read("CHANGELOG.md");
   assert.match(support, /github\.com\/FelixHenrikChristian\/Lumina\/issues/);
-  for (const dependency of ["Electron", "React", "Zustand", "liquid-glass-react"]) {
+  for (const dependency of ["Electron", "electron-updater", "React", "Zustand", "liquid-glass-react"]) {
     assert.match(notices, new RegExp(dependency, "i"));
   }
   assert.match(changelog, /## \[1\.0\.0\] - 2026-07-10/);
 });
 
-test("README explains downloads, unsigned builds, and tag-based releases", () => {
+test("README explains version-neutral downloads, unsigned builds, and tag-based releases", () => {
   const readme = read("README.md");
   assert.match(readme, /releases\/latest/);
-  assert.match(readme, /Lumina-Setup-1\.0\.0\.exe/);
-  assert.match(readme, /Lumina-Portable-1\.0\.0\.exe/);
+  assert.match(readme, /Lumina-Setup-<version>\.exe/);
+  assert.match(readme, /Lumina-Portable-<version>\.exe/);
   assert.match(readme, /unsigned/i);
-  assert.match(readme, /git tag -a v1\.0\.0/);
+  assert.match(readme, /npm version \$newVersion --no-git-tag-version/);
+  assert.match(readme, /\$version = node -p/);
+  assert.match(readme, /git tag -a "v\$version"/);
   assert.match(readme, /Draft Release/);
+  assert.match(readme, /Automatic update checks/i);
+  assert.match(readme, /latest\.yml/);
+  assert.match(readme, /before automatic update support must be upgraded manually/i);
+});
+
+test("English and Simplified Chinese READMEs stay linked and release-compatible", () => {
+  const english = read("README.md");
+  const chinese = read("README.zh-CN.md");
+  assert.match(english, /\[简体中文\]\(README\.zh-CN\.md\)/);
+  assert.match(chinese, /\[English\]\(README\.md\)/);
+  assert.match(chinese, /Lumina-Setup-<version>\.exe/);
+  assert.match(chinese, /Lumina-Portable-<version>\.exe/);
+  assert.match(chinese, /npm version \$newVersion --no-git-tag-version/);
+  assert.match(chinese, /git tag -a "v\$version"/);
+  assert.match(chinese, /自动检查更新/);
+  assert.match(chinese, /latest\.yml/);
 });

@@ -14,6 +14,7 @@ import {
   TagIcon,
 } from "./components/icons";
 import type { SidebarView } from "./core/models";
+import { isElectron, nativeApi, type AppUpdateState } from "./fs/electronApi";
 
 const SIDEBAR_TABS: { view: SidebarView; labelKey: string; Icon: typeof FolderIcon }[] = [
   { view: "locations", labelKey: "Locations", Icon: FolderIcon },
@@ -29,6 +30,7 @@ export default function App() {
   const setSidebarView = useLumina((s) => s.setSidebarView);
   const toggleSidebar = useLumina((s) => s.toggleSidebar);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [appUpdate, setAppUpdate] = useState<AppUpdateState | null>(null);
   const wallpaperStyle = customWallpaper
     ? ({
         "--lumina-wallpaper-image": `url(${JSON.stringify(customWallpaper.url)})`,
@@ -41,6 +43,22 @@ export default function App() {
   useEffect(() => {
     const { selectedLocationId, selectLocation } = useLumina.getState();
     if (selectedLocationId) void selectLocation(selectedLocationId);
+  }, []);
+
+  useEffect(() => {
+    if (!isElectron()) return;
+    const api = nativeApi();
+    let active = true;
+    const unsubscribe = api.onUpdateState((state) => {
+      if (active) setAppUpdate(state);
+    });
+    void api.getUpdateState().then((state) => {
+      if (active) setAppUpdate(state);
+    }).catch(() => undefined);
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
   // Ctrl+B mirrors the seam handle button.
@@ -62,6 +80,13 @@ export default function App() {
   }, []);
 
   const sidebarToggleLabel = t(sidebarCollapsed ? "ShowSidebar" : "HideSidebar");
+  const updateNeedsAttention = appUpdate !== null
+    && ["available", "downloading", "downloaded"].includes(appUpdate.status);
+  const settingsLabel = appUpdate?.status === "downloaded"
+    ? t("UpdateReadyToInstallTitle", appUpdate.availableVersion ?? "")
+    : updateNeedsAttention
+      ? t("UpdateAvailableTitle", appUpdate?.availableVersion ?? "")
+      : t("Settings");
 
   return (
     <OverlayProvider>
@@ -79,8 +104,9 @@ export default function App() {
                 {t("AppTitle")}
                 <button
                   type="button"
-                  className="nav-button settings-button"
-                  title={t("Settings")}
+                  className={`nav-button settings-button${updateNeedsAttention ? " has-update" : ""}`}
+                  title={settingsLabel}
+                  aria-label={settingsLabel}
                   aria-haspopup="dialog"
                   onClick={() => setSettingsOpen(true)}
                 >
@@ -128,7 +154,12 @@ export default function App() {
           </StaticLiquidGlassSurface>
         </div>
       </div>
-      {settingsOpen && <SettingsDialog onDismiss={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <SettingsDialog
+          updateState={appUpdate}
+          onDismiss={() => setSettingsOpen(false)}
+        />
+      )}
     </OverlayProvider>
   );
 }

@@ -30,6 +30,7 @@
     "dist": "npm run build && npm run pack:win"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "zustand": "^5.0.14"
@@ -64,6 +65,13 @@
     "asarUnpack": [
       "electron/windows-shell/**"
     ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "FelixHenrikChristian",
+        "repo": "Lumina"
+      }
+    ],
     "win": {
       "icon": "build/icon.ico",
       "target": [
@@ -89,7 +97,7 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Lumina",
       "uninstallDisplayName": "Lumina ${version}",
-      "differentialPackage": false
+      "differentialPackage": true
     },
     "portable": {
       "artifactName": "Lumina-Portable-${version}.${ext}"

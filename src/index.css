@@ -1368,6 +1368,18 @@ select.lg-input option {
   color: var(--lg-text);
 }
 
+.settings-button.has-update::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--lg-accent);
+  box-shadow: 0 0 0 2px rgba(8, 13, 28, 0.85), 0 0 8px var(--lg-accent);
+}
+
 /* Settings dialog: category nav on the left, active pane on the right. */
 .settings-layout {
   display: flex;
@@ -1604,6 +1616,10 @@ select.lg-input option {
   cursor: default;
 }
 
+.settings-row.is-static {
+  cursor: default;
+}
+
 .settings-action-row {
   display: flex;
   flex-wrap: wrap;
@@ -1625,6 +1641,42 @@ select.lg-input option {
 
 .settings-error {
   color: var(--lg-danger);
+}
+
+.update-status-card {
+  margin: 2px 6px 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--lg-stroke);
+  border-radius: var(--lg-radius-sm);
+  background: var(--lg-glass-tint);
+  color: var(--lg-text-dim);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.update-progress {
+  appearance: none;
+  display: block;
+  width: calc(100% - 12px);
+  height: 6px;
+  margin: 10px 6px 4px;
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.update-progress::-webkit-progress-bar {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.update-progress::-webkit-progress-value {
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--lg-accent-deep), var(--lg-accent));
+}
+
+.update-actions {
+  margin-top: 4px;
 }
 
 .settings-row select {

@@ -25,10 +25,10 @@ const pngInfo = (bytes: Buffer) => {
   };
 };
 
-test("release metadata has one public 1.0.0 identity", () => {
-  assert.equal(packageJson.version, "1.0.0");
-  assert.equal(packageLock.version, "1.0.0");
-  assert.equal(packageLock.packages[""].version, "1.0.0");
+test("release metadata has one consistent public version identity", () => {
+  assert.equal(packageVersionFromTag(`v${packageJson.version}`), packageJson.version);
+  assert.equal(packageLock.version, packageJson.version);
+  assert.equal(packageLock.packages[""].version, packageJson.version);
   assert.equal(packageJson.author, "FelixHenrikChristian");
   assert.equal(packageJson.license, "MIT");
   assert.equal(packageJson.homepage, "https://github.com/FelixHenrikChristian/Lumina#readme");
@@ -41,6 +41,18 @@ test("Electron is the only desktop packager", () => {
   assert.equal(packageJson.scripts.tauri, undefined);
   assert.equal(packageJson.scripts["pack:win"], "electron-builder --win --publish never");
   assert.equal(existsSync(join(root, "src-tauri")), false);
+});
+
+test("automatic updates use the public GitHub provider and NSIS differential packages", () => {
+  assert.match(packageJson.dependencies["electron-updater"], /^\^6\./);
+  assert.deepEqual(packageJson.build.publish, [
+    {
+      provider: "github",
+      owner: "FelixHenrikChristian",
+      repo: "Lumina",
+    },
+  ]);
+  assert.equal(packageJson.build.nsis.differentialPackage, true);
 });
 
 test("Windows packages use explicit icons and stable artifact names", () => {
