@@ -243,7 +243,8 @@ export function GlassDialog({
         saturation={glass.saturation}
         aberrationIntensity={glass.aberrationIntensity}
         elasticity={0}
-        animate={false} // dialogs are static: no hover motion, no transitions
+        animate={false} // dialogs are static: no deformation or transitions
+        trackLight={true}
         overLight={glass.overLight}
         padding="0px"
       >

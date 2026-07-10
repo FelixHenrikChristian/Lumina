@@ -761,26 +761,12 @@ select.lg-input option {
   -webkit-backdrop-filter: blur(4px);
 }
 
-/* Minimal shims for the Tailwind utility classes liquid-glass-react puts on
-   its internal layers (we don't ship Tailwind). Without these, the overLight
-   tint layers stay invisible. */
+/* liquid-glass-react's official preview leaves its Tailwind-only dark tint
+   layers transparent. Keep only the interaction utilities here so overLight
+   matches that preview: stronger shadow/blur and softer refraction, without
+   turning large glass surfaces black. */
 .pointer-events-none {
   pointer-events: none;
-}
-.bg-black {
-  background: #000;
-}
-.opacity-0 {
-  opacity: 0;
-}
-.opacity-20 {
-  opacity: 0.2;
-}
-.opacity-100 {
-  opacity: 1;
-}
-.mix-blend-overlay {
-  mix-blend-mode: overlay;
 }
 .cursor-pointer {
   cursor: pointer;
