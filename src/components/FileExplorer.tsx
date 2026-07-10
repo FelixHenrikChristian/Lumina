@@ -826,7 +826,6 @@ function TagFilterPopover({ anchor, onClose }: { anchor: HTMLElement; onClose():
                         }
                         onClick={() => void toggleTagFilter(tag.id)}
                       >
-                        {active && <CheckIcon size={11} />}
                         {tag.name}
                       </button>
                     );

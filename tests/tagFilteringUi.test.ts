@@ -37,3 +37,11 @@ test("inactive filter tags keep a subtle tint while active tags keep their full 
     /background: color-mix\(in srgb, var\(--tag-filter-color\) 25%, var\(--lg-glass-tint-strong\)\)/,
   );
 });
+
+test("selected filter tags do not render a leading check icon", () => {
+  const popover = explorer.slice(
+    explorer.indexOf("function TagFilterPopover"),
+    explorer.indexOf("function Breadcrumbs"),
+  );
+  assert.doesNotMatch(popover, /<CheckIcon/);
+});
