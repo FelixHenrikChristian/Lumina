@@ -20,8 +20,8 @@ All notable changes to Lumina are documented in this file. The format is based o
 
 - Draft releases now include `latest.yml` and the NSIS differential blockmap so
   updates become visible only after the draft is manually published.
-- Release documentation now uses version-neutral artifact names and derives Git
-  tags from the package version.
+- Public READMEs now use a product-focused bilingual layout, while version-neutral
+  maintainer release steps live in `docs/releasing.md`.
 
 ## [1.0.0] - 2026-07-10
 

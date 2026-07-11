@@ -1,65 +1,79 @@
-# Lumina
+<p align="center">
+  <img src="build/icon.png" width="132" height="132" alt="Lumina app icon">
+</p>
 
-**English** | [简体中文](README.zh-CN.md)
+<h1 align="center">Lumina</h1>
 
-Lumina is a local, tag-oriented file manager for Windows with a liquid-glass
-interface. It stores tags as a leading group in each filename, for example
-`[work urgent] report.pdf`, so tagged files remain portable and do not depend on
-a separate database.
+<p align="center">
+  <strong>A local-first, tag-oriented file manager for Windows.</strong><br>
+  Organize files with portable filename tags—no database or cloud account required.
+</p>
+
+<p align="center">
+  <a href="https://github.com/FelixHenrikChristian/Lumina/releases/latest"><img src="https://img.shields.io/github/v/release/FelixHenrikChristian/Lumina?display_name=tag&sort=semver" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/FelixHenrikChristian/Lumina" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white" alt="Windows 10 and 11">
+</p>
+
+<p align="center">
+  <strong>English</strong> · <a href="README.zh-CN.md">简体中文</a>
+</p>
+
+Lumina stores tags as a leading group in each filename—for example,
+`[work urgent] report.pdf`. Tagged files remain understandable and portable in
+File Explorer, backups, removable drives, and other applications.
 
 ## Download
 
-Download the current release from
-[GitHub Releases](https://github.com/FelixHenrikChristian/Lumina/releases/latest).
+**[Download the latest release →](https://github.com/FelixHenrikChristian/Lumina/releases/latest)**
+
+| Package | Best for |
+| --- | --- |
+| `Lumina-Setup-<version>.exe` | Regular use, Start menu and desktop shortcuts, uninstaller, and in-app updates |
+| `Lumina-Portable-<version>.exe` | No-install use; update by downloading and replacing the executable manually |
+
 Lumina supports 64-bit Windows 10 and Windows 11.
-
-- `Lumina-Setup-<version>.exe` installs Lumina, adds Start menu and desktop
-  shortcuts, and includes an uninstaller.
-- `Lumina-Portable-<version>.exe` runs without installation. Preferences are still
-  stored in the current Windows user's application-data directory.
-
-Versions released before automatic update support must be upgraded manually
-once; subsequent installed releases can be updated from inside Lumina. Portable
-builds continue to be replaced manually.
 
 > [!WARNING]
 > Lumina's Windows executables are currently unsigned. Windows may show an
-> Unknown Publisher or SmartScreen warning. Download them only from the official
-> Releases page and compare the SHA-256 digest shown by GitHub before running them.
+> Unknown Publisher or SmartScreen warning. Download only from the official
+> Releases page and compare the SHA-256 digest shown by GitHub before running.
 
 ```powershell
 Get-FileHash .\Lumina-Setup-*.exe -Algorithm SHA256
 ```
 
-## Features
+## Highlights
 
-- Native folder picker and local Windows filesystem access.
-- Grid view with image and Windows Shell video thumbnails.
-- Breadcrumbs, navigation history, recursive search, sorting, zoom, multi-select,
-  and keyboard navigation.
-- Folder creation, rename, copy, move, paste, undo/redo paste, Recycle Bin, open
-  with the default application, and reveal in File Explorer.
-- Tag groups, tag colors, drag-and-drop tagging, multi-tag filtering, and
-  TagSpaces-style import/export.
-- English and Simplified Chinese interfaces.
-- Custom wallpapers and configurable liquid-glass appearance.
-- Automatic update checks for installed builds, with user-controlled download,
-  progress, and restart; portable builds link to the manual download.
+| Area | Details |
+| --- | --- |
+| **Local access** | Native folder picker and direct access to the local Windows filesystem |
+| **Browsing** | Grid view, breadcrumbs, navigation history, recursive search, sorting, zoom, multi-select, and keyboard navigation |
+| **File operations** | Create folders, rename, copy, move, paste, undo/redo paste, use the Recycle Bin, open with the default application, and reveal items in File Explorer |
+| **Tagging** | Portable filename tags, tag groups, tag colors, drag-and-drop tagging, multi-tag filtering, and TagSpaces-style import/export |
+| **Thumbnails** | Image previews and Windows Shell video thumbnails |
+| **Interface** | English and Simplified Chinese, custom wallpapers, and configurable liquid-glass effects |
+| **Updates** | Installed builds automatically check for updates and let you control download, progress, and restart; portable builds open the manual download page |
 
-Lumina processes files locally and does not include telemetry, accounts, cloud
-storage, advertising, or crash reporting. Update checks contact the official
-GitHub Releases feed but do not upload managed files, tags, or usage data. See
-[PRIVACY.md](PRIVACY.md) for details.
+## Privacy by design
+
+Files, tags, thumbnails, settings, and wallpapers stay on your device. Lumina
+does not include telemetry, accounts, cloud storage, advertising, or crash
+reporting. Update checks contact the official GitHub Releases feed but do not
+upload managed files, tags, or usage data. See the [privacy policy](PRIVACY.md).
 
 ## Development
 
-Requirements:
+<details>
+<summary><strong>Build and test Lumina locally</strong></summary>
+
+### Requirements
 
 - Windows 10 or Windows 11
 - Node.js 22.12 or newer
 - npm
 
-Install the locked dependencies and run the checks:
+### Install and verify
 
 ```powershell
 npm ci
@@ -69,7 +83,7 @@ npm run build
 npm run app:smoke
 ```
 
-Useful commands:
+### Common commands
 
 ```powershell
 npm run dev       # browser development server
@@ -78,38 +92,15 @@ npm run dist      # production build, installer, and portable executable
 ```
 
 The Electron renderer uses context isolation with Node.js integration disabled.
-Native filesystem operations are exposed through explicit IPC handlers and are
+Native filesystem operations are exposed through explicit IPC handlers and
 validated against folder roots selected by the user.
 
-## Release process
+</details>
 
-The release workflow runs on a `vX.Y.Z` tag. It verifies that the tag matches
-`package.json`, runs tests and the desktop smoke test on a GitHub-hosted Windows
-runner, builds both executables, and creates a **Draft Release**.
-It also uploads the update metadata and differential-download blockmap, but it
-never publishes the release automatically. Update clients cannot see the draft.
+## Project links
 
-Before preparing a release, update `package.json` and `package-lock.json`
-together. Published tags and their assets must never be replaced.
-
-```powershell
-$newVersion = Read-Host "Release version"
-npm version $newVersion --no-git-tag-version
-$version = node -p "require('./package.json').version"
-git tag -a "v$version" -m "Lumina $version"
-git push origin "v$version"
-```
-
-After the Action succeeds, open the generated draft on GitHub and check the
-release notes, both executables, `latest.yml`, and the installer blockmap. Click
-**Publish release** only after those assets have been verified.
-
-## Project information
-
-- Changes: [CHANGELOG.md](CHANGELOG.md)
-- Support: [SUPPORT.md](SUPPORT.md)
-- Security: [SECURITY.md](SECURITY.md)
-- Privacy: [PRIVACY.md](PRIVACY.md)
-- Third-party notices: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+[Changelog](CHANGELOG.md) · [Security](SECURITY.md) · [Privacy](PRIVACY.md) ·
+[Support](SUPPORT.md) · [Third-party notices](THIRD_PARTY_NOTICES.md) ·
+[Maintainer release guide](docs/releasing.md)
 
 Lumina is available under the [MIT License](LICENSE).
