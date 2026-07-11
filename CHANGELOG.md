@@ -6,16 +6,22 @@ All notable changes to Lumina are documented in this file. The format is based o
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-11
+
 ### Added
 
 - Automatic GitHub Releases update checks for packaged builds, including an
   in-app version status, user-approved NSIS downloads, progress, and restart.
 - Portable-build update notifications that open the official manual download.
+- Simplified Chinese README with matching download, development, and release
+  guidance.
 
 ### Changed
 
 - Draft releases now include `latest.yml` and the NSIS differential blockmap so
   updates become visible only after the draft is manually published.
+- Release documentation now uses version-neutral artifact names and derives Git
+  tags from the package version.
 
 ## [1.0.0] - 2026-07-10
 
@@ -42,5 +48,6 @@ All notable changes to Lumina are documented in this file. The format is based o
 - Updates are downloaded manually from GitHub Releases; automatic updates are not
   included.
 
-[Unreleased]: https://github.com/FelixHenrikChristian/Lumina/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/FelixHenrikChristian/Lumina/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/FelixHenrikChristian/Lumina/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/FelixHenrikChristian/Lumina/releases/tag/v1.0.0

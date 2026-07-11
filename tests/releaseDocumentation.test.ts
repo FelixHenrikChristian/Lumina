@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = (relativePath: string) => readFileSync(join(root, relativePath), "utf8");
+const packageJson = JSON.parse(read("package.json"));
 
 const requiredDocuments = [
   "LICENSE",
@@ -51,6 +52,9 @@ test("support, notices, and changelog point users to the right resources", () =>
     assert.match(notices, new RegExp(dependency, "i"));
   }
   assert.match(changelog, /## \[1\.0\.0\] - 2026-07-10/);
+  const currentVersion = packageJson.version.replace(/\./g, "\\.");
+  assert.match(changelog, new RegExp(`## \\[${currentVersion}\\] - \\d{4}-\\d{2}-\\d{2}`));
+  assert.match(changelog, new RegExp(`compare/v${currentVersion}\\.\\.\\.HEAD`));
 });
 
 test("README explains version-neutral downloads, unsigned builds, and tag-based releases", () => {
