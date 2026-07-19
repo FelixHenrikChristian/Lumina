@@ -20,9 +20,19 @@ contextBridge.exposeInMainWorld("luminaNative", {
   rename: (oldPath, newName) => ipcRenderer.invoke("lumina:rename", oldPath, newName),
   trash: (paths) => ipcRenderer.invoke("lumina:trash", paths),
   deletePermanently: (paths) => ipcRenderer.invoke("lumina:deletePermanently", paths),
-  transfer: (paths, destinationPath, move) => ipcRenderer.invoke("lumina:transfer", paths, destinationPath, move),
+  transfer: (paths, destinationPath, move, resolutions) =>
+    ipcRenderer.invoke("lumina:transfer", paths, destinationPath, move, resolutions),
+  cancelFileOperation: (operationId) => ipcRenderer.invoke("lumina:cancelFileOperation", operationId),
+  onFileOperationProgress: (callback) => {
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on("lumina:fileOperationProgress", listener);
+    return () => ipcRenderer.removeListener("lumina:fileOperationProgress", listener);
+  },
   writeFileClipboard: (paths, move) => ipcRenderer.invoke("lumina:writeFileClipboard", paths, move),
-  pasteFileClipboard: (destinationPath) => ipcRenderer.invoke("lumina:pasteFileClipboard", destinationPath),
+  inspectPasteFileClipboard: (destinationPath) =>
+    ipcRenderer.invoke("lumina:inspectPasteFileClipboard", destinationPath),
+  pasteFileClipboard: (destinationPath, resolutions) =>
+    ipcRenderer.invoke("lumina:pasteFileClipboard", destinationPath, resolutions),
   readFileClipboard: () => ipcRenderer.invoke("lumina:readFileClipboard"),
   undoNativePaste: () => ipcRenderer.invoke("lumina:undoNativePaste"),
   redoNativePaste: () => ipcRenderer.invoke("lumina:redoNativePaste"),

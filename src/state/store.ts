@@ -15,7 +15,13 @@ import {
   DEFAULT_FILE_SORT_OPTIONS,
 } from "../core/models";
 import { LocationPathScope, baseNameOf, isSamePath, joinPath, parentPathOf } from "../core/paths";
-import type { FileClipboardState, SystemClipboardPasteResult, TransferConflictResolutions } from "../fs/types";
+import type {
+  FileClipboardState,
+  FileTransferConflict,
+  SystemClipboardPasteResult,
+  SystemPasteInspection,
+  TransferConflictResolutions,
+} from "../fs/types";
 import { sortFileItems } from "../core/sorting";
 import { resolveLanguage, translate } from "../core/localization";
 import {
@@ -84,12 +90,9 @@ export const FALLBACK_TAG_STYLE: TagStyle = {
   known: false,
 };
 
-export interface FileTransferConflict {
-  readonly sourcePath: string;
-  readonly source: FileItem;
-  readonly destination: FileItem | null;
-  readonly sameDirectory: boolean;
-}
+// Re-exported for components that resolve conflicts; defined in fs/types so
+// filesystem adapters can produce them without importing the store.
+export type { FileTransferConflict } from "../fs/types";
 
 type ExplorerHistoryEntry =
   | { readonly kind: "rename"; readonly locationId: string; readonly before: string; readonly after: string }
@@ -177,7 +180,8 @@ interface LuminaState {
   inspectTransfer(paths: string[], move: boolean): Promise<FileTransferConflict[]>;
   transferPaths(paths: string[], move: boolean, resolutions?: TransferConflictResolutions): Promise<void>;
   copyPathsToSystemClipboard(paths: string[], move: boolean): Promise<void>;
-  pasteSystemClipboard(): Promise<SystemClipboardPasteResult>;
+  inspectSystemClipboardPaste(): Promise<SystemPasteInspection | null>;
+  pasteSystemClipboard(resolutions?: TransferConflictResolutions): Promise<SystemClipboardPasteResult>;
   readSystemClipboard(): Promise<FileClipboardState>;
   watchCurrentDirectory(onChanged: () => void): Promise<() => void>;
   undoLastFileOperation(): Promise<void>;
@@ -760,11 +764,21 @@ export const useLumina = create<LuminaState>((set, get) => {
         set({ errorMessage: message(error) });
       }
     },
-    async pasteSystemClipboard() {
+    async inspectSystemClipboardPaste() {
+      const browser = await currentBrowser();
+      if (!browser?.inspectPasteFileClipboard || !get().currentPath) return null;
+      try {
+        return await browser.inspectPasteFileClipboard(get().currentPath);
+      } catch (error) {
+        set({ errorMessage: message(error) });
+        return { hasFiles: false, move: false, conflicts: [] };
+      }
+    },
+    async pasteSystemClipboard(resolutions = {}) {
       const browser = await currentBrowser();
       if (!browser?.pasteFileClipboard) return { pasted: false, supported: false };
       try {
-        const result = await browser.pasteFileClipboard(get().currentPath);
+        const result = await browser.pasteFileClipboard(get().currentPath, resolutions);
         if (result.pasted) {
           if (result.supported && get().selectedLocationId) {
             recordHistory({

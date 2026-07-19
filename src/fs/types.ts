@@ -2,6 +2,18 @@ import type { FileItem } from "../core/models";
 
 export type TransferConflictAction = "replace" | "skip" | "keepBoth";
 export type TransferConflictResolutions = Readonly<Record<string, TransferConflictAction>>;
+export interface FileTransferConflict {
+  readonly sourcePath: string;
+  readonly source: FileItem;
+  readonly destination: FileItem | null;
+  readonly sameDirectory: boolean;
+}
+/** Phase 1 of a native paste: clipboard contents checked against the destination. */
+export interface SystemPasteInspection {
+  readonly hasFiles: boolean;
+  readonly move: boolean;
+  readonly conflicts: FileTransferConflict[];
+}
 export interface SystemClipboardPasteResult {
   readonly pasted: boolean;
   readonly supported?: boolean;
@@ -42,7 +54,12 @@ export interface FileBrowserService {
   ): Promise<boolean>;
   /** Native desktop only: exchange file lists with the operating system clipboard. */
   writeFileClipboard?(paths: string[], move: boolean): Promise<void>;
-  pasteFileClipboard?(destinationPath: string): Promise<SystemClipboardPasteResult>;
+  /** Native desktop only: preview a system-clipboard paste, surfacing conflicts. */
+  inspectPasteFileClipboard?(destinationPath: string): Promise<SystemPasteInspection>;
+  pasteFileClipboard?(
+    destinationPath: string,
+    resolutions?: TransferConflictResolutions,
+  ): Promise<SystemClipboardPasteResult>;
   readFileClipboard?(): Promise<FileClipboardState>;
   undoNativePaste?(): Promise<boolean>;
   redoNativePaste?(): Promise<boolean>;

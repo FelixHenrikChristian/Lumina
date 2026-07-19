@@ -12,6 +12,7 @@ const { execFile, spawn } = require("node:child_process");
 const { promisify } = require("node:util");
 const { thumbnailDataUrlForPath } = require("./thumbnail.cjs");
 const { createUpdateController } = require("./updater.cjs");
+const { normalizeResolutions, planTransferBatches } = require("./fileOperationPlanning.cjs");
 
 const execFileAsync = promisify(execFile);
 
@@ -22,6 +23,7 @@ const directoryWatchers = new Map();
 const watchedWebContents = new WeakSet();
 const nativeUndoStack = [];
 const nativeRedoStack = [];
+const activeFileOperations = new Map(); // session id -> operation session
 let clipboardWorker = null;
 let clipboardWorkerOutput = "";
 const clipboardWorkerPending = [];
@@ -83,7 +85,67 @@ function nativeWindowHandle(event) {
   return buffer.length >= 8 ? buffer.readBigUInt64LE().toString() : String(buffer.readUInt32LE());
 }
 
-async function runWindowsFileOperation(event, request) {
+// A logical operation (one paste/transfer/delete) can run as several
+// sequential Shell batches. They share one session so the renderer shows a
+// single themed progress dialog and a single Cancel that stops the whole
+// thing — including batches that have not launched yet.
+function createOperationSession(event, { kind, itemCount, reportProgress }) {
+  const id = crypto.randomUUID();
+  const session = {
+    id,
+    sender: event.sender,
+    kind,
+    itemCount,
+    reportProgress: Boolean(reportProgress),
+    cancelled: false,
+    currentChild: null,
+    currentCancelPath: "",
+    onSenderDestroyed: null,
+  };
+  if (session.reportProgress) {
+    activeFileOperations.set(id, session);
+    session.onSenderDestroyed = () => cancelOperationSession(session);
+    event.sender.once("destroyed", session.onSenderDestroyed);
+    sendSessionProgress(session, { phase: "started" });
+  }
+  return session;
+}
+
+function sendSessionProgress(session, state) {
+  if (!session.reportProgress) return;
+  if (session.sender.isDestroyed()) return;
+  session.sender.send("lumina:fileOperationProgress", {
+    id: session.id,
+    action: session.kind,
+    itemCount: session.itemCount,
+    ...state,
+  });
+}
+
+function cancelOperationSession(session) {
+  session.cancelled = true;
+  if (session.currentCancelPath) {
+    nodeFs.writeFile(session.currentCancelPath, "cancel", () => undefined);
+  }
+}
+
+function finishOperationSession(session, state) {
+  if (session.onSenderDestroyed) {
+    session.sender.removeListener("destroyed", session.onSenderDestroyed);
+    session.onSenderDestroyed = null;
+  }
+  activeFileOperations.delete(session.id);
+  sendSessionProgress(session, state);
+}
+
+// Runs one Shell batch. When the batch belongs to a progress session it
+// streams progress lines and honors session cancellation via a marker file
+// the LuminaProgressBridge polls. Resolves to the parsed FileOperationResult.
+async function runWindowsFileOperation(event, request, session = null) {
+  const hasSession = Boolean(session && session.reportProgress);
+  const cancellationPath = hasSession
+    ? path.join(app.getPath("temp"), `lumina-file-op-${crypto.randomUUID()}.cancel`)
+    : "";
   const payload = Buffer.from(JSON.stringify({
     action: request.action,
     sources: request.sources ?? [],
@@ -94,8 +156,14 @@ async function runWindowsFileOperation(event, request) {
     ownerHandle: nativeWindowHandle(event),
     addUndoRecord: request.addUndoRecord !== false,
     noConfirmation: Boolean(request.noConfirmation),
+    cancellationPath,
+    // Always attach the progress bridge: it is what keeps the Shell from
+    // creating its own progress window, even for quick renames/mkdirs whose
+    // progress lines nobody listens to.
+    reportProgress: true,
   }), "utf8").toString("base64");
-  const { stdout } = await execFileAsync(
+
+  const child = spawn(
     "powershell.exe",
     [
       "-NoProfile",
@@ -105,15 +173,145 @@ async function runWindowsFileOperation(event, request) {
       "Bypass",
       "-File",
       windowsShellRunnerPath(),
-      "-Payload",
-      payload,
     ],
-    { windowsHide: true, maxBuffer: 1024 * 1024 },
+    { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] },
   );
-  const output = stdout.trim();
-  return output
-    ? JSON.parse(Buffer.from(output, "base64").toString("utf8"))
-    : { Aborted: false };
+
+  if (session) {
+    session.currentChild = child;
+    session.currentCancelPath = cancellationPath;
+    // A cancel may have arrived while the previous batch was winding down.
+    if (session.cancelled && cancellationPath) {
+      nodeFs.writeFile(cancellationPath, "cancel", () => undefined);
+    }
+  }
+
+  // The payload goes over stdin so long multi-file selections can't overflow
+  // the ~32k Windows command-line limit.
+  child.stdin.write(`${payload}\n`, "utf8", () => child.stdin.end());
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let stdoutBuffer = "";
+    let stderr = "";
+    let resultPayload = null;
+    let errorPayload = null;
+    let protocolError = null;
+
+    const cleanup = () => {
+      if (session && session.currentChild === child) {
+        session.currentChild = null;
+        session.currentCancelPath = "";
+      }
+      if (cancellationPath) nodeFs.rm(cancellationPath, { force: true }, () => undefined);
+    };
+
+    const decode = (encoded) => JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
+    const handleLine = (rawLine) => {
+      const line = rawLine.replace(/\r$/, "").replace(/^\uFEFF/, "").trim();
+      if (!line) return;
+      try {
+        if (line.startsWith("LUMINA_FILE_PROGRESS:")) {
+          const values = line.slice("LUMINA_FILE_PROGRESS:".length).split(",").map(Number);
+          if (values.length === 6 && values.every(Number.isFinite) && session) {
+            sendSessionProgress(session, {
+              phase: session.cancelled ? "cancelling" : "progress",
+              pointsCurrent: values[0],
+              pointsTotal: values[1],
+              sizeCurrent: values[2],
+              sizeTotal: values[3],
+              itemsCurrent: values[4],
+              itemsTotal: values[5],
+            });
+          }
+        } else if (line.startsWith("LUMINA_FILE_RESULT:")) {
+          resultPayload = decode(line.slice("LUMINA_FILE_RESULT:".length));
+        } else if (line.startsWith("LUMINA_FILE_ERROR:")) {
+          errorPayload = decode(line.slice("LUMINA_FILE_ERROR:".length));
+        }
+      } catch (error) {
+        protocolError = error;
+      }
+    };
+
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdoutBuffer += chunk;
+      for (;;) {
+        const newline = stdoutBuffer.indexOf("\n");
+        if (newline < 0) break;
+        handleLine(stdoutBuffer.slice(0, newline));
+        stdoutBuffer = stdoutBuffer.slice(newline + 1);
+      }
+    });
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => {
+      if (stderr.length < 64 * 1024) stderr += chunk;
+    });
+    child.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    });
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      if (stdoutBuffer.trim()) handleLine(stdoutBuffer);
+      cleanup();
+
+      if (protocolError) {
+        reject(new Error("Windows returned an unreadable file-operation response."));
+        return;
+      }
+      if (code !== 0 || errorPayload) {
+        const raw = typeof errorPayload?.Message === "string"
+          ? errorPayload.Message
+          : "Windows file operation failed.";
+        const message = raw.replace(/\s+/g, " ").trim().slice(0, 1000) || "Windows file operation failed.";
+        if (!errorPayload && stderr.trim()) {
+          console.error("Windows file operation helper failed:", stderr.trim().slice(0, 2000));
+        }
+        reject(new Error(message));
+        return;
+      }
+      resolve(resultPayload ?? { Aborted: false });
+    });
+  });
+}
+
+// Runs planned batches under a session, stopping early on cancellation or an
+// aborted batch. Returns { aborted } for the whole logical operation.
+async function runOperationBatches(event, session, batches, base) {
+  let aborted = false;
+  try {
+    for (const batch of batches) {
+      if (session.cancelled) {
+        aborted = true;
+        break;
+      }
+      const result = await runWindowsFileOperation(
+        event,
+        { ...base, ...batch },
+        session,
+      );
+      aborted ||= Boolean(result.Aborted);
+      if (aborted) break;
+    }
+    finishOperationSession(session, { phase: "completed", aborted });
+    return { aborted };
+  } catch (error) {
+    finishOperationSession(session, { phase: "failed" });
+    throw error;
+  }
+}
+
+function stopFileOperations() {
+  for (const session of activeFileOperations.values()) {
+    cancelOperationSession(session);
+    if (session.currentChild) session.currentChild.kill();
+  }
+  activeFileOperations.clear();
 }
 
 function failClipboardWorker(error) {
@@ -285,50 +483,59 @@ async function buildNativePasteHistory(sources, destination, move, namesBefore) 
 }
 
 async function replayNativePaste(event, entry) {
-  const sameDirectoryCopies = entry.kind === "copy"
-    ? entry.sources.filter((source) => path.dirname(source).toLowerCase() === entry.destination.toLowerCase())
-    : [];
-  const regularSources = entry.sources.filter((source) => !sameDirectoryCopies.includes(source));
-  if (sameDirectoryCopies.length > 0) {
-    await runWindowsFileOperation(event, {
-      action: "copy",
-      sources: sameDirectoryCopies,
-      destination: entry.destination,
-      renameOnCollision: true,
-      addUndoRecord: false,
-      noConfirmation: true,
-    });
-  }
-  if (regularSources.length > 0) {
-    await runWindowsFileOperation(event, {
-      action: entry.kind,
-      sources: regularSources,
-      destination: entry.destination,
-      addUndoRecord: false,
-      noConfirmation: true,
-    });
-  }
+  const session = createOperationSession(event, {
+    kind: entry.kind,
+    itemCount: entry.sources.length,
+    reportProgress: true,
+  });
+  const batches = planTransferBatches(entry.sources, entry.destination, entry.kind === "move", {});
+  return runOperationBatches(event, session, batches, {
+    destination: entry.destination,
+    addUndoRecord: false,
+    noConfirmation: true,
+  });
 }
 
 async function undoNativePaste(event, entry) {
   if (entry.kind === "copy") {
-    await runWindowsFileOperation(event, {
-      action: "delete",
-      sources: entry.targets,
+    const session = createOperationSession(event, {
+      kind: "delete",
+      itemCount: entry.targets.length,
+      reportProgress: true,
+    });
+    return runOperationBatches(event, session, [{ action: "delete", sources: entry.targets }], {
       permanent: true,
       addUndoRecord: false,
       noConfirmation: true,
     });
-    return;
   }
-  for (let index = 0; index < entry.targets.length; index += 1) {
-    await runWindowsFileOperation(event, {
-      action: "move",
-      sources: [entry.targets[index]],
-      destination: path.dirname(entry.sources[index]),
-      addUndoRecord: false,
-      noConfirmation: true,
-    });
+  const session = createOperationSession(event, {
+    kind: "move",
+    itemCount: entry.targets.length,
+    reportProgress: true,
+  });
+  let aborted = false;
+  try {
+    for (let index = 0; index < entry.targets.length; index += 1) {
+      if (session.cancelled) {
+        aborted = true;
+        break;
+      }
+      const result = await runWindowsFileOperation(event, {
+        action: "move",
+        sources: [entry.targets[index]],
+        destination: path.dirname(entry.sources[index]),
+        addUndoRecord: false,
+        noConfirmation: true,
+      }, session);
+      aborted ||= Boolean(result.Aborted);
+      if (aborted) break;
+    }
+    finishOperationSession(session, { phase: "completed", aborted });
+    return { aborted };
+  } catch (error) {
+    finishOperationSession(session, { phase: "failed" });
+    throw error;
   }
 }
 
@@ -425,6 +632,15 @@ async function entryInfo(dirPath, dirent, relativeParent) {
 }
 
 function registerIpc() {
+  ipcMain.handle("lumina:cancelFileOperation", (event, sessionId) => {
+    if (typeof sessionId !== "string") return false;
+    const session = activeFileOperations.get(sessionId);
+    if (!session || session.sender !== event.sender) return false;
+    cancelOperationSession(session);
+    sendSessionProgress(session, { phase: "cancelling" });
+    return true;
+  });
+
   ipcMain.handle("lumina:chooseWallpaper", async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const result = await dialog.showOpenDialog(win, {
@@ -573,52 +789,50 @@ function registerIpc() {
 
   ipcMain.handle("lumina:trash", async (event, paths) => {
     if (!Array.isArray(paths)) throw new Error("Expected a path array");
-    const result = await runWindowsFileOperation(event, {
-      action: "delete",
-      sources: paths.map(assertAllowed),
+    const sources = paths.map(assertAllowed);
+    // noConfirmation: Lumina already asked with its themed dialog; without it
+    // Windows would raise its own recycle prompts. Trade-off: items too large
+    // for the Recycle Bin are then deleted outright instead of warning.
+    const session = createOperationSession(event, {
+      kind: "delete",
+      itemCount: sources.length,
+      reportProgress: true,
     });
-    return { aborted: Boolean(result.Aborted) };
+    return runOperationBatches(event, session, [{ action: "delete", sources }], {
+      noConfirmation: true,
+    });
   });
 
   ipcMain.handle("lumina:deletePermanently", async (event, paths) => {
     if (!Array.isArray(paths)) throw new Error("Expected a path array");
-    const result = await runWindowsFileOperation(event, {
-      action: "delete",
-      sources: paths.map(assertAllowed),
-      permanent: true,
+    const sources = paths.map(assertAllowed);
+    const session = createOperationSession(event, {
+      kind: "delete",
+      itemCount: sources.length,
+      reportProgress: true,
     });
-    return { aborted: Boolean(result.Aborted) };
+    return runOperationBatches(event, session, [{ action: "delete", sources }], {
+      permanent: true,
+      noConfirmation: true,
+    });
   });
 
-  ipcMain.handle("lumina:transfer", async (event, paths, destinationPath, move) => {
+  ipcMain.handle("lumina:transfer", async (event, paths, destinationPath, move, resolutions) => {
     if (!Array.isArray(paths) || paths.length === 0 || typeof move !== "boolean") {
       throw new Error("Expected file paths and a transfer mode");
     }
     const destination = assertAllowed(destinationPath);
     const sources = paths.map(assertAllowed);
-    const sameDirectoryCopies = move
-      ? []
-      : sources.filter((source) => path.dirname(source).toLowerCase() === destination.toLowerCase());
-    const regularSources = sources.filter((source) => !sameDirectoryCopies.includes(source));
-    let aborted = false;
-    if (sameDirectoryCopies.length > 0) {
-      const result = await runWindowsFileOperation(event, {
-        action: "copy",
-        sources: sameDirectoryCopies,
-        destination,
-        renameOnCollision: true,
-      });
-      aborted ||= Boolean(result.Aborted);
-    }
-    if (regularSources.length > 0) {
-      const result = await runWindowsFileOperation(event, {
-        action: move ? "move" : "copy",
-        sources: regularSources,
-        destination,
-      });
-      aborted ||= Boolean(result.Aborted);
-    }
-    return { aborted };
+    const batches = planTransferBatches(sources, destination, move, normalizeResolutions(resolutions));
+    const session = createOperationSession(event, {
+      kind: move ? "move" : "copy",
+      itemCount: sources.length,
+      reportProgress: true,
+    });
+    return runOperationBatches(event, session, batches, {
+      destination,
+      noConfirmation: true,
+    });
   });
 
   ipcMain.handle("lumina:writeFileClipboard", async (_event, paths, move) => {
@@ -630,34 +844,66 @@ function registerIpc() {
 
   ipcMain.handle("lumina:readFileClipboard", async () => readWindowsFileClipboard());
 
-  ipcMain.handle("lumina:pasteFileClipboard", async (event, destinationPath) => {
+  // Phase 1 of a native paste: report what the clipboard holds and which
+  // items collide with the destination, so the renderer can resolve conflicts
+  // in Lumina's own dialog before anything touches the Shell.
+  ipcMain.handle("lumina:inspectPasteFileClipboard", async (_event, destinationPath) => {
+    const destination = assertAllowed(destinationPath);
+    const { paths, move } = await readWindowsFileClipboard();
+    if (paths.length === 0) return { hasFiles: false, move: false, items: [] };
+    const destinationEntries = new Map();
+    for (const name of await directoryNames(destination)) {
+      destinationEntries.set(name.toLowerCase(), name);
+    }
+    const statOf = async (target) => {
+      try {
+        const stat = await fs.stat(target);
+        return { isDirectory: stat.isDirectory(), size: Number(stat.size), modified: stat.mtimeMs };
+      } catch {
+        return null;
+      }
+    };
+    const items = [];
+    for (const rawSource of paths.map(canonical)) {
+      const sourceInfo = await statOf(rawSource);
+      if (!sourceInfo) continue; // stale clipboard entry; paste will skip it too
+      const name = path.basename(rawSource);
+      const sameDirectory = path.dirname(rawSource).toLowerCase() === destination.toLowerCase();
+      const existingName = destinationEntries.get(name.toLowerCase());
+      // Same-directory copies auto-rename (Explorer's "- Copy"), and a
+      // same-directory cut is a no-op — neither needs a conflict prompt.
+      const conflictPath = !sameDirectory && existingName ? path.join(destination, existingName) : null;
+      const conflictInfo = conflictPath ? await statOf(conflictPath) : null;
+      items.push({
+        path: rawSource,
+        name,
+        ...sourceInfo,
+        conflict: conflictInfo ? { name: existingName, path: conflictPath, ...conflictInfo } : null,
+      });
+    }
+    return { hasFiles: items.length > 0, move, items };
+  });
+
+  ipcMain.handle("lumina:pasteFileClipboard", async (event, destinationPath, resolutions) => {
     const destination = assertAllowed(destinationPath);
     const { paths, move } = await readWindowsFileClipboard();
     if (paths.length === 0) return { pasted: false };
-    const sources = paths.map(canonical);
+    const clean = normalizeResolutions(resolutions);
+    const sources = paths
+      .map(canonical)
+      .filter((source) => clean[source.toLowerCase()] !== "skip");
+    if (sources.length === 0) return { pasted: false };
     const namesBefore = await directoryNames(destination);
-    const sameDirectoryCopies = move
-      ? []
-      : sources.filter((source) => path.dirname(source).toLowerCase() === destination.toLowerCase());
-    const regularSources = sources.filter((source) => !sameDirectoryCopies.includes(source));
-    let aborted = false;
-    if (sameDirectoryCopies.length > 0) {
-      const result = await runWindowsFileOperation(event, {
-        action: "copy",
-        sources: sameDirectoryCopies,
-        destination,
-        renameOnCollision: true,
-      });
-      aborted ||= Boolean(result.Aborted);
-    }
-    if (regularSources.length > 0) {
-      const result = await runWindowsFileOperation(event, {
-        action: move ? "move" : "copy",
-        sources: regularSources,
-        destination,
-      });
-      aborted ||= Boolean(result.Aborted);
-    }
+    const batches = planTransferBatches(sources, destination, move, clean);
+    const session = createOperationSession(event, {
+      kind: move ? "move" : "copy",
+      itemCount: sources.length,
+      reportProgress: true,
+    });
+    const { aborted } = await runOperationBatches(event, session, batches, {
+      destination,
+      noConfirmation: true,
+    });
     let undoRecorded = false;
     if (!aborted) {
       try {
@@ -834,6 +1080,7 @@ app.whenReady().then(() => {
 
 app.on("before-quit", () => {
   updateController?.stop();
+  stopFileOperations();
   stopClipboardWorker();
 });
 

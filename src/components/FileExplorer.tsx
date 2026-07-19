@@ -19,6 +19,11 @@ import {
 } from "../core/models";
 import { formatModified, formatSize } from "../core/format";
 import { getDisplayNameWithoutExtension } from "../core/tagParser";
+import {
+  isElectron,
+  nativeApi,
+  type NativeFileOperationProgress,
+} from "../fs/electronApi";
 import { searchResultParentPath } from "./searchResultNavigation";
 import { useLazyThumbnail } from "./useThumbnail";
 import {
@@ -58,6 +63,8 @@ const SORT_FIELDS: { field: FileSortField; labelKey: string }[] = [
 ];
 
 interface PendingTransfer {
+  /** "transfer": in-app clipboard fallback; "systemPaste": native Ctrl+V. */
+  readonly kind: "transfer" | "systemPaste";
   readonly paths: string[];
   readonly move: boolean;
   readonly conflicts: FileTransferConflict[];
@@ -82,11 +89,15 @@ export function FileExplorer() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [permanentDelete, setPermanentDelete] = useState(false);
   const [pendingTransfer, setPendingTransfer] = useState<PendingTransfer | null>(null);
+  const [fileOperation, setFileOperation] = useState<NativeFileOperationProgress | null>(null);
+  const [showFileOperation, setShowFileOperation] = useState(false);
   const [cutPaths, setCutPaths] = useState<Set<string>>(() => new Set());
   const gridRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const clipboardRef = useRef<{ paths: string[]; cut: boolean } | null>(null);
   const clipboardWriteRef = useRef<Promise<void> | null>(null);
+  const fileOperationRef = useRef<NativeFileOperationProgress | null>(null);
+  const revealTimerRef = useRef<number | null>(null);
 
   // Ctrl+wheel zoom needs preventDefault, which React's passive wheel
   // listeners cannot deliver — attach natively.
@@ -137,6 +148,54 @@ export function FileExplorer() {
       window.removeEventListener("focus", onFocus);
     };
   }, [selectedLocationId]);
+
+  // Themed progress for native Shell operations. One dialog tracks the most
+  // recent session; it only appears after 300ms so quick operations never
+  // flash it. "cancelling" is sticky — later progress ticks keep the numbers
+  // fresh but cannot flip the label back.
+  useEffect(() => {
+    if (!isElectron()) return;
+    const clearRevealTimer = () => {
+      if (revealTimerRef.current !== null) {
+        window.clearTimeout(revealTimerRef.current);
+        revealTimerRef.current = null;
+      }
+    };
+    const unsubscribe = nativeApi().onFileOperationProgress((event) => {
+      if (event.phase === "started") {
+        clearRevealTimer();
+        fileOperationRef.current = event;
+        setFileOperation(event);
+        setShowFileOperation(false);
+        revealTimerRef.current = window.setTimeout(() => {
+          if (fileOperationRef.current?.id === event.id) setShowFileOperation(true);
+        }, 300);
+        return;
+      }
+      const current = fileOperationRef.current;
+      if (!current || current.id !== event.id) return;
+      if (event.phase === "completed" || event.phase === "failed") {
+        clearRevealTimer();
+        fileOperationRef.current = null;
+        setShowFileOperation(false);
+        setFileOperation(null);
+        return;
+      }
+      const next: NativeFileOperationProgress = {
+        ...current,
+        ...event,
+        phase: current.phase === "cancelling" && event.phase === "progress"
+          ? "cancelling"
+          : event.phase,
+      };
+      fileOperationRef.current = next;
+      setFileOperation(next);
+    });
+    return () => {
+      clearRevealTimer();
+      unsubscribe();
+    };
+  }, []);
 
   // App-level shortcuts (skipped while typing in a field).
   useEffect(() => {
@@ -242,22 +301,40 @@ export function FileExplorer() {
         event.preventDefault();
         void (async () => {
           await clipboardWriteRef.current;
-          const result = await useLumina.getState().pasteSystemClipboard();
-          if (result.supported) {
-            if (result.pasted) {
-              clipboardRef.current = null;
-              setCutPaths(new Set());
-            }
-            return;
-          }
-
-          const clipboard = clipboardRef.current;
-          if (!clipboard) return;
           const currentState = useLumina.getState();
           try {
+            // Native locations: inspect the system clipboard first so any
+            // conflict is settled in Lumina's dialog — the Shell operation
+            // then runs with all Windows prompts suppressed.
+            const inspection = await currentState.inspectSystemClipboardPaste();
+            if (inspection) {
+              if (!inspection.hasFiles) return;
+              if (inspection.conflicts.length > 0) {
+                setPendingTransfer({
+                  kind: "systemPaste",
+                  paths: [],
+                  move: inspection.move,
+                  conflicts: inspection.conflicts,
+                  index: 0,
+                  resolutions: {},
+                });
+                return;
+              }
+              const result = await currentState.pasteSystemClipboard();
+              if (result.pasted) {
+                clipboardRef.current = null;
+                setCutPaths(new Set());
+              }
+              return;
+            }
+
+            // Adapters without a system clipboard fall back to the in-app one.
+            const clipboard = clipboardRef.current;
+            if (!clipboard) return;
             const conflicts = await currentState.inspectTransfer(clipboard.paths, clipboard.cut);
             if (conflicts.length > 0) {
               setPendingTransfer({
+                kind: "transfer",
                 paths: clipboard.paths,
                 move: clipboard.cut,
                 conflicts,
@@ -280,14 +357,8 @@ export function FileExplorer() {
       if (isLetter("d") && !event.shiftKey) {
         if (state.selectedPaths.size === 0) return;
         event.preventDefault();
-        const nativeLocation = state.locations.find(
-          (location) => location.id === state.selectedLocationId,
-        )?.kind === "native";
-        if (nativeLocation) void state.deleteSelected(false);
-        else {
-          setPermanentDelete(false);
-          setConfirmDelete(true);
-        }
+        setPermanentDelete(false);
+        setConfirmDelete(true);
         return;
       }
 
@@ -327,17 +398,32 @@ export function FileExplorer() {
       return;
     }
     setPendingTransfer(null);
+    if (pendingTransfer.kind === "systemPaste") {
+      void (async () => {
+        const result = await useLumina.getState().pasteSystemClipboard(resolutions);
+        if (result.pasted) {
+          clipboardRef.current = null;
+          setCutPaths(new Set());
+        }
+      })();
+      return;
+    }
     void useLumina.getState().transferPaths(pendingTransfer.paths, pendingTransfer.move, resolutions);
     if (pendingTransfer.move) setCutPaths(new Set());
   };
 
   const requestDelete = (permanently: boolean) => {
-    if (trashDelete) {
-      void useLumina.getState().deleteSelected(permanently);
-      return;
-    }
     setPermanentDelete(permanently);
     setConfirmDelete(true);
+  };
+
+  const cancelFileOperation = () => {
+    const operation = fileOperationRef.current;
+    if (!operation || operation.phase === "cancelling") return;
+    const cancelling = { ...operation, phase: "cancelling" as const };
+    fileOperationRef.current = cancelling;
+    setFileOperation(cancelling);
+    void nativeApi().cancelFileOperation(operation.id);
   };
 
   const onGridKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -516,7 +602,80 @@ export function FileExplorer() {
           onCancel={() => setPendingTransfer(null)}
         />
       )}
+      {showFileOperation && fileOperation && (
+        <FileOperationProgressDialog progress={fileOperation} onCancel={cancelFileOperation} />
+      )}
     </div>
+  );
+}
+
+function FileOperationProgressDialog({
+  progress,
+  onCancel,
+}: {
+  progress: NativeFileOperationProgress;
+  onCancel(): void;
+}) {
+  const t = useT();
+  const title = t(
+    progress.action === "copy"
+      ? "FileOperationCopyTitle"
+      : progress.action === "move"
+        ? "FileOperationMoveTitle"
+        : "FileOperationDeleteTitle",
+  );
+  // Points are the Shell's own progress axis (the standard dialog's bar);
+  // fall back to bytes, then item counts, else stay indeterminate.
+  const pair = (progress.pointsTotal ?? 0) > 0
+    ? [progress.pointsCurrent ?? 0, progress.pointsTotal ?? 0]
+    : (progress.sizeTotal ?? 0) > 0
+      ? [progress.sizeCurrent ?? 0, progress.sizeTotal ?? 0]
+      : (progress.itemsTotal ?? 0) > 0
+        ? [progress.itemsCurrent ?? 0, progress.itemsTotal ?? 0]
+        : null;
+  const percent = pair
+    ? Math.max(0, Math.min(100, Math.round((pair[0] / pair[1]) * 100)))
+    : null;
+  const details = progress.phase === "cancelling"
+    ? t("FileOperationCancelling")
+    : (progress.sizeTotal ?? 0) > 0
+      ? t(
+          "FileOperationBytesProgress",
+          formatSize(Math.min(progress.sizeCurrent ?? 0, progress.sizeTotal ?? 0)),
+          formatSize(progress.sizeTotal ?? 0),
+        )
+      : (progress.itemsTotal ?? 0) > 0
+        ? t(
+            "FileOperationItemsProgress",
+            Math.min(progress.itemsCurrent ?? 0, progress.itemsTotal ?? 0),
+            progress.itemsTotal ?? 0,
+          )
+        : t("FileOperationPreparing", progress.itemCount);
+
+  return (
+    <GlassDialog title={title} onDismiss={() => undefined} width={420}>
+      <div className="file-operation-status" role="status" aria-live="polite">
+        <progress
+          className="file-operation-progress"
+          max={100}
+          value={percent ?? undefined}
+          aria-label={percent === null ? details : `${title}: ${percent}%`}
+        />
+        <div className="file-operation-details">
+          <span>{details}</span>
+          {percent !== null && <strong>{percent}%</strong>}
+        </div>
+      </div>
+      <div className="lg-dialog-actions">
+        <LiquidGlassButton
+          disabled={progress.phase === "cancelling"}
+          onClick={onCancel}
+          autoFocus
+        >
+          {t("Cancel")}
+        </LiquidGlassButton>
+      </div>
+    </GlassDialog>
   );
 }
 
@@ -531,34 +690,39 @@ function TransferConflictDialog({
   onAction(action: TransferConflictAction): void;
   onCancel(): void;
 }) {
+  const t = useT();
   const describe = (file: FileItem) =>
-    `${file.isDirectory ? "文件夹" : formatSize(file.size)} · ${file.modified ? formatModified(file.modified) : "未知日期"}`;
+    `${file.isDirectory ? t("Folder") : formatSize(file.size)} · ${
+      file.modified ? formatModified(file.modified) : t("UnknownDate")
+    }`;
   if (conflict.sameDirectory) {
     return (
-      <GlassDialog title="粘贴已中断" onDismiss={onCancel} width={460}>
-        <p className="lg-dialog-message">源文件夹和目标文件夹相同：{conflict.source.name}</p>
+      <GlassDialog title={t("PasteInterruptedTitle")} onDismiss={onCancel} width={460}>
+        <p className="lg-dialog-message">{t("PasteSameFolderMessage", conflict.source.name)}</p>
         <div className="lg-dialog-actions">
-          <LiquidGlassButton onClick={onCancel}>取消</LiquidGlassButton>
+          <LiquidGlassButton onClick={onCancel}>{t("Cancel")}</LiquidGlassButton>
           <LiquidGlassButton variant="primary" onClick={() => onAction("skip")} autoFocus>
-            跳过
+            {t("ConflictSkip")}
           </LiquidGlassButton>
         </div>
       </GlassDialog>
     );
   }
   return (
-    <GlassDialog title="文件冲突" onDismiss={onCancel} width={520}>
-      <p className="lg-dialog-message">目标文件夹已包含同名项目：{conflict.source.name}</p>
+    <GlassDialog title={t("FileConflictTitle")} onDismiss={onCancel} width={520}>
+      <p className="lg-dialog-message">{t("FileConflictMessage", conflict.source.name)}</p>
       <div className="file-conflict-details">
-        <div><strong>源</strong><br />{describe(conflict.source)}</div>
-        {conflict.destination && <div><strong>目标</strong><br />{describe(conflict.destination)}</div>}
+        <div><strong>{t("ConflictSource")}</strong><br />{describe(conflict.source)}</div>
+        {conflict.destination && (
+          <div><strong>{t("ConflictDestination")}</strong><br />{describe(conflict.destination)}</div>
+        )}
       </div>
       <div className="lg-dialog-actions">
-        <LiquidGlassButton onClick={onCancel}>取消</LiquidGlassButton>
-        <LiquidGlassButton onClick={() => onAction("skip")}>跳过</LiquidGlassButton>
-        <LiquidGlassButton onClick={() => onAction("keepBoth")}>保留两个</LiquidGlassButton>
+        <LiquidGlassButton onClick={onCancel}>{t("Cancel")}</LiquidGlassButton>
+        <LiquidGlassButton onClick={() => onAction("skip")}>{t("ConflictSkip")}</LiquidGlassButton>
+        <LiquidGlassButton onClick={() => onAction("keepBoth")}>{t("ConflictKeepBoth")}</LiquidGlassButton>
         <LiquidGlassButton variant={move ? "danger" : "primary"} onClick={() => onAction("replace")} autoFocus>
-          替换
+          {t("ConflictReplace")}
         </LiquidGlassButton>
       </div>
     </GlassDialog>

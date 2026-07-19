@@ -32,6 +32,38 @@ export interface AppUpdateState {
   readonly error: string | null;
 }
 
+export interface NativeFileOperationProgress {
+  readonly id: string;
+  readonly action: "copy" | "move" | "delete";
+  readonly itemCount: number;
+  readonly phase: "started" | "progress" | "cancelling" | "completed" | "failed";
+  readonly pointsCurrent?: number;
+  readonly pointsTotal?: number;
+  readonly sizeCurrent?: number;
+  readonly sizeTotal?: number;
+  readonly itemsCurrent?: number;
+  readonly itemsTotal?: number;
+  readonly aborted?: boolean;
+}
+
+export interface NativePasteEntryInfo {
+  readonly name: string;
+  readonly isDirectory: boolean;
+  readonly size: number;
+  readonly modified: number | null;
+}
+
+export interface NativePasteItem extends NativePasteEntryInfo {
+  readonly path: string;
+  readonly conflict: (NativePasteEntryInfo & { readonly path: string }) | null;
+}
+
+export interface NativePasteInspection {
+  readonly hasFiles: boolean;
+  readonly move: boolean;
+  readonly items: NativePasteItem[];
+}
+
 export interface LuminaNativeApi {
   chooseWallpaper(): Promise<CustomWallpaper | null>;
   pickFolder(): Promise<{ path: string; name: string } | null>;
@@ -46,9 +78,20 @@ export interface LuminaNativeApi {
   rename(oldPath: string, newName: string): Promise<string>;
   trash(paths: string[]): Promise<{ aborted: boolean }>;
   deletePermanently(paths: string[]): Promise<{ aborted: boolean }>;
-  transfer(paths: string[], destinationPath: string, move: boolean): Promise<{ aborted: boolean }>;
+  transfer(
+    paths: string[],
+    destinationPath: string,
+    move: boolean,
+    resolutions?: Readonly<Record<string, string>>,
+  ): Promise<{ aborted: boolean }>;
+  cancelFileOperation(operationId: string): Promise<boolean>;
+  onFileOperationProgress(callback: (state: NativeFileOperationProgress) => void): () => void;
   writeFileClipboard(paths: string[], move: boolean): Promise<void>;
-  pasteFileClipboard(destinationPath: string): Promise<SystemClipboardPasteResult>;
+  inspectPasteFileClipboard(destinationPath: string): Promise<NativePasteInspection>;
+  pasteFileClipboard(
+    destinationPath: string,
+    resolutions?: Readonly<Record<string, string>>,
+  ): Promise<SystemClipboardPasteResult>;
   readFileClipboard(): Promise<FileClipboardState>;
   undoNativePaste(): Promise<{ handled: boolean }>;
   redoNativePaste(): Promise<{ handled: boolean }>;

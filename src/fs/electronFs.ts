@@ -7,9 +7,12 @@ import {
   validateEntryName,
   type FileBrowserService,
   type FileClipboardState,
+  type FileTransferConflict,
   type SystemClipboardPasteResult,
+  type SystemPasteInspection,
+  type TransferConflictResolutions,
 } from "./types";
-import { nativeApi, type NativeEntry } from "./electronApi";
+import { nativeApi, type NativeEntry, type NativePasteEntryInfo } from "./electronApi";
 
 function makeItem(entry: NativeEntry, virtualPath: string, relativePath: string): FileItem {
   const displayName = getDisplayName(entry.name);
@@ -114,11 +117,19 @@ export class ElectronFileBrowser implements FileBrowserService {
     paths: string[],
     destinationPath: string,
     move: boolean,
+    resolutions: TransferConflictResolutions = {},
   ): Promise<boolean> {
+    // Resolution keys arrive as virtual paths; the main process plans Shell
+    // batches from native paths, so re-key them here.
+    const nativeResolutions: Record<string, string> = {};
+    for (const [key, action] of Object.entries(resolutions)) {
+      nativeResolutions[this.toNative(key).toLowerCase()] = action;
+    }
     const result = await nativeApi().transfer(
       paths.map((path) => this.toNative(path)),
       this.toNative(destinationPath),
       move,
+      nativeResolutions,
     );
     return !result.aborted;
   }
@@ -127,8 +138,45 @@ export class ElectronFileBrowser implements FileBrowserService {
     await nativeApi().writeFileClipboard(paths.map((path) => this.toNative(path)), move);
   }
 
-  async pasteFileClipboard(destinationPath: string): Promise<SystemClipboardPasteResult> {
-    return { ...(await nativeApi().pasteFileClipboard(this.toNative(destinationPath))), supported: true };
+  async inspectPasteFileClipboard(destinationPath: string): Promise<SystemPasteInspection> {
+    const inspection = await nativeApi().inspectPasteFileClipboard(this.toNative(destinationPath));
+    const toItem = (info: NativePasteEntryInfo, nativePath: string): FileItem =>
+      makeItem(
+        {
+          name: info.name,
+          path: nativePath,
+          relativeParent: "",
+          isDirectory: info.isDirectory,
+          size: info.size,
+          modified: info.modified,
+        },
+        // Conflict cards are display-only; sources can sit outside the
+        // location root, so keep the native path as the identifier.
+        this.fromNative(nativePath) ?? nativePath,
+        "",
+      );
+    return {
+      hasFiles: inspection.hasFiles,
+      move: inspection.move,
+      conflicts: inspection.items
+        .filter((item) => item.conflict !== null)
+        .map((item): FileTransferConflict => ({
+          sourcePath: item.path,
+          source: toItem(item, item.path),
+          destination: item.conflict ? toItem(item.conflict, item.conflict.path) : null,
+          sameDirectory: false,
+        })),
+    };
+  }
+
+  async pasteFileClipboard(
+    destinationPath: string,
+    resolutions: TransferConflictResolutions = {},
+  ): Promise<SystemClipboardPasteResult> {
+    return {
+      ...(await nativeApi().pasteFileClipboard(this.toNative(destinationPath), resolutions)),
+      supported: true,
+    };
   }
 
   async readFileClipboard(): Promise<FileClipboardState> {
