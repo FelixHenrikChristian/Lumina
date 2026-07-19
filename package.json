@@ -1,7 +1,7 @@
 {
   "name": "lumina",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Local, tag-oriented file manager for Windows with a liquid glass interface",
   "author": "FelixHenrikChristian",
   "license": "MIT",

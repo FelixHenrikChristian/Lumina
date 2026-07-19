@@ -6,6 +6,34 @@ All notable changes to Lumina are documented in this file. The format is based o
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-19
+
+### Added
+
+- Themed in-app progress dialog for native copy, move, and delete operations,
+  driven by live Windows Shell progress and supporting mid-operation
+  cancellation.
+- Themed conflict resolution for pastes and transfers: replace, skip, or keep
+  both, decided per item before the operation runs.
+
+### Changed
+
+- Native file operations no longer show Windows-owned dialogs. Shell progress
+  windows, delete confirmations, conflict prompts, and error popups are
+  replaced by Lumina's dialogs and in-app error messages, while Recycle Bin
+  deletes and File Explorer's undo history keep working.
+- Deleting always asks for confirmation inside Lumina, including on managed
+  native folders.
+- File-operation payloads stream over stdin, so large multi-file selections no
+  longer risk the Windows command-line length limit.
+- The transfer-conflict dialog is fully localized in English and Simplified
+  Chinese instead of using fixed Chinese strings.
+
+### Known limitations
+
+- Because Windows confirmation prompts are suppressed, items too large for the
+  Recycle Bin are deleted permanently without an extra size warning.
+
 ## [1.1.0] - 2026-07-11
 
 ### Added
@@ -48,6 +76,7 @@ All notable changes to Lumina are documented in this file. The format is based o
 - Updates are downloaded manually from GitHub Releases; automatic updates are not
   included.
 
-[Unreleased]: https://github.com/FelixHenrikChristian/Lumina/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/FelixHenrikChristian/Lumina/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/FelixHenrikChristian/Lumina/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/FelixHenrikChristian/Lumina/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/FelixHenrikChristian/Lumina/releases/tag/v1.0.0
