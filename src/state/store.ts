@@ -287,7 +287,7 @@ export const useLumina = create<LuminaState>((set, get) => {
     });
   };
 
-  const loadInto = async (path: string) => {
+  const loadInto = async (path: string, options?: { keepFiles?: boolean }) => {
     const generation = ++loadGeneration;
     const state = get();
     const browser = await currentBrowser().catch((error: unknown) => {
@@ -295,7 +295,11 @@ export const useLumina = create<LuminaState>((set, get) => {
       return null;
     });
     if (!browser || !state.scope) return;
-    set({ isBusy: true, errorMessage: null, files: [] });
+    // Same-directory reloads keep the current entries mounted so the grid's
+    // height — and with it the scroll position — survives the round trip.
+    // Navigation still clears so stale contents never flash.
+    if (options?.keepFiles) set({ isBusy: true, errorMessage: null });
+    else set({ isBusy: true, errorMessage: null, files: [] });
     try {
       const filterNames = activeTagFilterNames(state);
       const query = state.searchQuery.trim();
@@ -331,7 +335,7 @@ export const useLumina = create<LuminaState>((set, get) => {
   };
 
   const reloadAndSelect = async (paths: string[]) => {
-    await loadInto(get().currentPath);
+    await loadInto(get().currentPath, { keepFiles: true });
     const wanted = new Set(paths.map((p) => p.toLowerCase()));
     const matching = get().files.filter((f) => wanted.has(f.path.toLowerCase()));
     if (matching.length > 0) {
@@ -548,7 +552,7 @@ export const useLumina = create<LuminaState>((set, get) => {
       if (parent) await get().openDirectory(parent);
     },
     async refresh() {
-      await loadInto(get().currentPath);
+      await loadInto(get().currentPath, { keepFiles: true });
     },
     setSearchQuery(query) {
       set({ searchQuery: query });
@@ -691,7 +695,7 @@ export const useLumina = create<LuminaState>((set, get) => {
         if (!permanently && locationId && browser.restoreDeleted) {
           recordHistory({ kind: "delete", locationId, paths: [...selectedPaths] });
         }
-        await loadInto(get().currentPath);
+        await loadInto(get().currentPath, { keepFiles: true });
         const remaining = get().files;
         if (remaining.length > 0) {
           const next = remaining[Math.min(minIndex, remaining.length - 1)];
@@ -787,7 +791,7 @@ export const useLumina = create<LuminaState>((set, get) => {
               undoAvailable: Boolean(result.undoRecorded),
             });
           }
-          await loadInto(get().currentPath);
+          await loadInto(get().currentPath, { keepFiles: true });
         }
         return result;
       } catch (error) {
@@ -849,7 +853,7 @@ export const useLumina = create<LuminaState>((set, get) => {
             else await browser.deleteMany(targets, true);
           }
         }
-        await loadInto(get().currentPath);
+        await loadInto(get().currentPath, { keepFiles: true });
         redoStack.push(entry);
       } catch (error) {
         undoStack.push(entry);
@@ -900,7 +904,7 @@ export const useLumina = create<LuminaState>((set, get) => {
           const alreadyRedone = entry.move ? targetsPresent && sourcesMissing : targetsPresent;
           if (!alreadyRedone) await browser.transferMany(entry.sources, entry.destination, entry.move);
         }
-        await loadInto(get().currentPath);
+        await loadInto(get().currentPath, { keepFiles: true });
         undoStack.push(entry);
       } catch (error) {
         redoStack.push(entry);

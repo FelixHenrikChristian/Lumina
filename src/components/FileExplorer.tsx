@@ -80,6 +80,7 @@ export function FileExplorer() {
   const isBusy = useLumina((s) => s.isBusy);
   const errorMessage = useLumina((s) => s.errorMessage);
   const selectedCount = useLumina((s) => s.selectedPaths.size);
+  const focusedPath = useLumina((s) => s.focusedPath);
   const zoomLevelIndex = useLumina((s) => s.zoomLevelIndex);
   const trashDelete = useLumina(
     (s) => s.locations.find((l) => l.id === s.selectedLocationId)?.kind === "native",
@@ -112,6 +113,15 @@ export function FileExplorer() {
     grid.addEventListener("wheel", onWheel, { passive: false });
     return () => grid.removeEventListener("wheel", onWheel);
   }, [selectedLocationId]);
+
+  // Same-directory reloads (tag drop, rename, delete, undo) re-focus the
+  // acted-on file; follow it if the reload re-sorted it out of view.
+  useEffect(() => {
+    if (!focusedPath) return;
+    gridRef.current
+      ?.querySelector(`[data-path="${CSS.escape(focusedPath)}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [focusedPath]);
 
   useEffect(() => {
     let disposed = false;
@@ -567,7 +577,7 @@ export function FileExplorer() {
             <p>{t("EmptyFolderHint")}</p>
           </div>
         )}
-        {isBusy && (
+        {isBusy && files.length === 0 && (
           <div className="explorer-loading">
             <span className="lg-spinner" />
             {t("Loading")}
