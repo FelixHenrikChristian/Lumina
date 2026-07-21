@@ -19,6 +19,11 @@ export interface SystemClipboardPasteResult {
   readonly supported?: boolean;
   readonly undoRecorded?: boolean;
 }
+/** Outcome of importing OS paths dropped in from another app. */
+export interface SystemImportResult {
+  readonly imported: boolean;
+  readonly undoRecorded?: boolean;
+}
 export interface FileClipboardState {
   readonly paths: string[];
   readonly move: boolean;
@@ -61,6 +66,18 @@ export interface FileBrowserService {
     resolutions?: TransferConflictResolutions,
   ): Promise<SystemClipboardPasteResult>;
   readFileClipboard?(): Promise<FileClipboardState>;
+  /** Native desktop only: check OS paths dropped from another app against a directory. */
+  inspectExternalImport?(
+    sourcePaths: string[],
+    destinationPath: string,
+  ): Promise<FileTransferConflict[]>;
+  /** Native desktop only: copy or move OS paths dropped from another app into a directory. */
+  importExternalPaths?(
+    sourcePaths: string[],
+    destinationPath: string,
+    move: boolean,
+    resolutions?: TransferConflictResolutions,
+  ): Promise<SystemImportResult>;
   undoNativePaste?(): Promise<boolean>;
   redoNativePaste?(): Promise<boolean>;
   /** Restores items deleted through the Windows Recycle Bin. Desktop adapter only. */

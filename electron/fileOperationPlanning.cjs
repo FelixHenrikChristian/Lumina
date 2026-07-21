@@ -55,4 +55,20 @@ function planTransferBatches(sources, destination, move, resolutions) {
   return batches;
 }
 
-module.exports = { normalizeResolutions, planTransferBatches };
+/**
+ * Explorer refuses dropping a folder into itself or its own subtree; the
+ * Shell would otherwise fail mid-operation with an opaque error. Returns the
+ * offending source, or null when the import is safe.
+ */
+function findRecursiveImportSource(sources, destination) {
+  const target = destination.toLowerCase();
+  for (const source of sources) {
+    const prefix = source.toLowerCase();
+    if (target === prefix || target.startsWith(`${prefix}\\`) || target.startsWith(`${prefix}/`)) {
+      return source;
+    }
+  }
+  return null;
+}
+
+module.exports = { findRecursiveImportSource, normalizeResolutions, planTransferBatches };

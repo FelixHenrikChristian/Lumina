@@ -183,6 +183,14 @@ interface LuminaState {
   inspectSystemClipboardPaste(): Promise<SystemPasteInspection | null>;
   pasteSystemClipboard(resolutions?: TransferConflictResolutions): Promise<SystemClipboardPasteResult>;
   readSystemClipboard(): Promise<FileClipboardState>;
+  /** Conflicts for OS paths dropped in from another app; null when the adapter can't import. */
+  inspectExternalImport(sourcePaths: string[], destinationPath: string): Promise<FileTransferConflict[] | null>;
+  importExternalPaths(
+    sourcePaths: string[],
+    destinationPath: string,
+    move: boolean,
+    resolutions?: TransferConflictResolutions,
+  ): Promise<void>;
   watchCurrentDirectory(onChanged: () => void): Promise<() => void>;
   undoLastFileOperation(): Promise<void>;
   redoLastFileOperation(): Promise<void>;
@@ -808,6 +816,39 @@ export const useLumina = create<LuminaState>((set, get) => {
         return { paths: [], move: false, supported: true };
       }
     },
+    async inspectExternalImport(sourcePaths, destinationPath) {
+      const browser = await currentBrowser();
+      if (!browser?.inspectExternalImport) return null;
+      try {
+        return await browser.inspectExternalImport(sourcePaths, destinationPath);
+      } catch (error) {
+        set({ errorMessage: message(error) });
+        return null;
+      }
+    },
+    async importExternalPaths(sourcePaths, destinationPath, move, resolutions = {}) {
+      const browser = await currentBrowser();
+      if (!browser?.importExternalPaths || sourcePaths.length === 0) return;
+      try {
+        const result = await browser.importExternalPaths(sourcePaths, destinationPath, move, resolutions);
+        if (!result.imported) return;
+        const locationId = get().selectedLocationId;
+        if (locationId) {
+          // The main process recorded the reversal plan (when one exists), so
+          // Ctrl+Z rides the same rails as a native paste.
+          recordHistory({ kind: "nativePaste", locationId, undoAvailable: Boolean(result.undoRecorded) });
+        }
+        if (isSamePath(destinationPath, get().currentPath)) {
+          await reloadAndSelect(sourcePaths.map((p) => joinPath(destinationPath, nativeBaseName(p))));
+        } else {
+          // Dropped onto a folder card: the visible listing is unchanged
+          // except for watchers, so just refresh in place.
+          await loadInto(get().currentPath, { keepFiles: true });
+        }
+      } catch (error) {
+        set({ errorMessage: message(error) });
+      }
+    },
     async watchCurrentDirectory(onChanged) {
       const browser = await currentBrowser();
       if (!browser?.watchDirectory || !get().currentPath) return () => undefined;
@@ -970,6 +1011,13 @@ export const useLumina = create<LuminaState>((set, get) => {
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Basename of an OS path (either separator); virtual paths use baseNameOf. */
+function nativeBaseName(nativePath: string): string {
+  const trimmed = nativePath.replace(/[\\/]+$/, "");
+  const index = Math.max(trimmed.lastIndexOf("\\"), trimmed.lastIndexOf("/"));
+  return index < 0 ? trimmed : trimmed.slice(index + 1);
 }
 
 /** Translation hook bound to the current language. */

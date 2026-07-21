@@ -12,7 +12,7 @@ const { execFile, spawn } = require("node:child_process");
 const { promisify } = require("node:util");
 const { thumbnailDataUrlForPath } = require("./thumbnail.cjs");
 const { createUpdateController } = require("./updater.cjs");
-const { normalizeResolutions, planTransferBatches } = require("./fileOperationPlanning.cjs");
+const { findRecursiveImportSource, normalizeResolutions, planTransferBatches } = require("./fileOperationPlanning.cjs");
 
 const execFileAsync = promisify(execFile);
 
@@ -482,6 +482,84 @@ async function buildNativePasteHistory(sources, destination, move, namesBefore) 
   };
 }
 
+// Stats explicit sources against a destination listing; phase 1 shared by
+// clipboard pastes and Explorer drag-drop imports. Conflicts come back to the
+// renderer so Lumina's dialog can settle them before the Shell ever runs.
+async function inspectImportSources(sourcePaths, destination) {
+  const destinationEntries = new Map();
+  for (const name of await directoryNames(destination)) {
+    destinationEntries.set(name.toLowerCase(), name);
+  }
+  const statOf = async (target) => {
+    try {
+      const stat = await fs.stat(target);
+      return { isDirectory: stat.isDirectory(), size: Number(stat.size), modified: stat.mtimeMs };
+    } catch {
+      return null;
+    }
+  };
+  const items = [];
+  for (const rawSource of sourcePaths.map(canonical)) {
+    const sourceInfo = await statOf(rawSource);
+    if (!sourceInfo) continue; // stale source; the operation will skip it too
+    const name = path.basename(rawSource);
+    const sameDirectory = path.dirname(rawSource).toLowerCase() === destination.toLowerCase();
+    const existingName = destinationEntries.get(name.toLowerCase());
+    // Same-directory copies auto-rename (Explorer's "- Copy"), and a
+    // same-directory cut is a no-op — neither needs a conflict prompt.
+    const conflictPath = !sameDirectory && existingName ? path.join(destination, existingName) : null;
+    const conflictInfo = conflictPath ? await statOf(conflictPath) : null;
+    items.push({
+      path: rawSource,
+      name,
+      ...sourceInfo,
+      conflict: conflictInfo ? { name: existingName, path: conflictPath, ...conflictInfo } : null,
+    });
+  }
+  return items;
+}
+
+// Copies or moves explicit native sources into destination under one progress
+// session, recording main-process undo history when the outcome is cleanly
+// reversible. Shared by clipboard pastes and Explorer drag-drop imports.
+async function runNativeImport(event, sources, destination, move, resolutions) {
+  const namesBefore = await directoryNames(destination);
+  const batches = planTransferBatches(sources, destination, move, resolutions);
+  const session = createOperationSession(event, {
+    kind: move ? "move" : "copy",
+    itemCount: sources.length,
+    reportProgress: true,
+  });
+  const { aborted } = await runOperationBatches(event, session, batches, {
+    destination,
+    noConfirmation: true,
+  });
+  let undoRecorded = false;
+  if (!aborted) {
+    const history = await buildNativePasteHistory(sources, destination, move, namesBefore);
+    if (history) {
+      recordNativePasteHistory(history);
+      undoRecorded = true;
+    }
+  }
+  return { aborted, undoRecorded };
+}
+
+// Explorer drag-drop hands the renderer paths outside the registered roots by
+// design — the drop gesture itself is the user's grant — so imports validate
+// shape only on sources and allowlist just the destination.
+function externalSourcePaths(rawPaths) {
+  if (!Array.isArray(rawPaths) || rawPaths.length === 0) {
+    throw new Error("Expected dropped file paths");
+  }
+  return rawPaths.map((rawPath) => {
+    if (typeof rawPath !== "string" || !path.isAbsolute(rawPath)) {
+      throw new Error("Dropped items must have absolute file paths.");
+    }
+    return canonical(rawPath);
+  });
+}
+
 async function replayNativePaste(event, entry) {
   const session = createOperationSession(event, {
     kind: entry.kind,
@@ -851,36 +929,7 @@ function registerIpc() {
     const destination = assertAllowed(destinationPath);
     const { paths, move } = await readWindowsFileClipboard();
     if (paths.length === 0) return { hasFiles: false, move: false, items: [] };
-    const destinationEntries = new Map();
-    for (const name of await directoryNames(destination)) {
-      destinationEntries.set(name.toLowerCase(), name);
-    }
-    const statOf = async (target) => {
-      try {
-        const stat = await fs.stat(target);
-        return { isDirectory: stat.isDirectory(), size: Number(stat.size), modified: stat.mtimeMs };
-      } catch {
-        return null;
-      }
-    };
-    const items = [];
-    for (const rawSource of paths.map(canonical)) {
-      const sourceInfo = await statOf(rawSource);
-      if (!sourceInfo) continue; // stale clipboard entry; paste will skip it too
-      const name = path.basename(rawSource);
-      const sameDirectory = path.dirname(rawSource).toLowerCase() === destination.toLowerCase();
-      const existingName = destinationEntries.get(name.toLowerCase());
-      // Same-directory copies auto-rename (Explorer's "- Copy"), and a
-      // same-directory cut is a no-op — neither needs a conflict prompt.
-      const conflictPath = !sameDirectory && existingName ? path.join(destination, existingName) : null;
-      const conflictInfo = conflictPath ? await statOf(conflictPath) : null;
-      items.push({
-        path: rawSource,
-        name,
-        ...sourceInfo,
-        conflict: conflictInfo ? { name: existingName, path: conflictPath, ...conflictInfo } : null,
-      });
-    }
+    const items = await inspectImportSources(paths, destination);
     return { hasFiles: items.length > 0, move, items };
   });
 
@@ -893,31 +942,37 @@ function registerIpc() {
       .map(canonical)
       .filter((source) => clean[source.toLowerCase()] !== "skip");
     if (sources.length === 0) return { pasted: false };
-    const namesBefore = await directoryNames(destination);
-    const batches = planTransferBatches(sources, destination, move, clean);
-    const session = createOperationSession(event, {
-      kind: move ? "move" : "copy",
-      itemCount: sources.length,
-      reportProgress: true,
-    });
-    const { aborted } = await runOperationBatches(event, session, batches, {
-      destination,
-      noConfirmation: true,
-    });
-    let undoRecorded = false;
+    const { aborted, undoRecorded } = await runNativeImport(event, sources, destination, move, clean);
     if (!aborted) {
       try {
         await markWindowsClipboardPasteSucceeded(move);
       } catch (error) {
         console.warn("Could not publish the completed paste effect to the Windows clipboard:", error);
       }
-      const history = await buildNativePasteHistory(sources, destination, move, namesBefore);
-      if (history) {
-        recordNativePasteHistory(history);
-        undoRecorded = true;
-      }
     }
     return { pasted: !aborted, undoRecorded };
+  });
+
+  // Phase 1 of an Explorer drag-drop: same conflict inspection as a paste,
+  // but against the dropped paths instead of the clipboard.
+  ipcMain.handle("lumina:inspectExternalImport", async (_event, sourcePaths, destinationPath) => {
+    const destination = assertAllowed(destinationPath);
+    const items = await inspectImportSources(externalSourcePaths(sourcePaths), destination);
+    return { hasFiles: items.length > 0, items };
+  });
+
+  ipcMain.handle("lumina:importExternalPaths", async (event, sourcePaths, destinationPath, move, resolutions) => {
+    if (typeof move !== "boolean") throw new Error("Expected a transfer mode");
+    const destination = assertAllowed(destinationPath);
+    const clean = normalizeResolutions(resolutions);
+    const sources = externalSourcePaths(sourcePaths)
+      .filter((source) => clean[source.toLowerCase()] !== "skip");
+    if (sources.length === 0) return { imported: false };
+    if (findRecursiveImportSource(sources, destination)) {
+      throw new Error("The destination folder is a subfolder of the source folder.");
+    }
+    const { aborted, undoRecorded } = await runNativeImport(event, sources, destination, move, clean);
+    return { imported: !aborted, undoRecorded };
   });
 
   ipcMain.handle("lumina:undoNativePaste", async (event) => {

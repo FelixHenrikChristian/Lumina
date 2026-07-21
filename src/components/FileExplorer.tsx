@@ -63,13 +63,17 @@ const SORT_FIELDS: { field: FileSortField; labelKey: string }[] = [
 ];
 
 interface PendingTransfer {
-  /** "transfer": in-app clipboard fallback; "systemPaste": native Ctrl+V. */
-  readonly kind: "transfer" | "systemPaste";
+  /** "transfer": in-app clipboard fallback; "systemPaste": native Ctrl+V;
+      "externalImport": files dropped in from Windows Explorer. */
+  readonly kind: "transfer" | "systemPaste" | "externalImport";
+  /** Virtual paths, except externalImport where they are OS paths. */
   readonly paths: string[];
   readonly move: boolean;
   readonly conflicts: FileTransferConflict[];
   readonly index: number;
   readonly resolutions: TransferConflictResolutions;
+  /** externalImport only: drop destination (other kinds paste into the current folder). */
+  readonly destinationPath?: string;
 }
 
 export function FileExplorer() {
@@ -82,7 +86,7 @@ export function FileExplorer() {
   const selectedCount = useLumina((s) => s.selectedPaths.size);
   const focusedPath = useLumina((s) => s.focusedPath);
   const zoomLevelIndex = useLumina((s) => s.zoomLevelIndex);
-  const trashDelete = useLumina(
+  const isNativeLocation = useLumina(
     (s) => s.locations.find((l) => l.id === s.selectedLocationId)?.kind === "native",
   );
   const cardWidth = CARD_WIDTH_ZOOM_LEVELS[zoomLevelIndex];
@@ -93,6 +97,9 @@ export function FileExplorer() {
   const [fileOperation, setFileOperation] = useState<NativeFileOperationProgress | null>(null);
   const [showFileOperation, setShowFileOperation] = useState(false);
   const [cutPaths, setCutPaths] = useState<Set<string>>(() => new Set());
+  // Highlighted destination of a Windows Explorer drag: a folder card's
+  // virtual path, or the current folder when the grid itself is the target.
+  const [externalDropPath, setExternalDropPath] = useState<string | null>(null);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const clipboardRef = useRef<{ paths: string[]; cut: boolean } | null>(null);
@@ -408,6 +415,17 @@ export function FileExplorer() {
       return;
     }
     setPendingTransfer(null);
+    if (pendingTransfer.kind === "externalImport") {
+      if (pendingTransfer.destinationPath) {
+        void useLumina.getState().importExternalPaths(
+          pendingTransfer.paths,
+          pendingTransfer.destinationPath,
+          pendingTransfer.move,
+          resolutions,
+        );
+      }
+      return;
+    }
     if (pendingTransfer.kind === "systemPaste") {
       void (async () => {
         const result = await useLumina.getState().pasteSystemClipboard(resolutions);
@@ -508,6 +526,76 @@ export function FileExplorer() {
     }
   };
 
+  // Windows Explorer drops: the grid imports into the folder being viewed and
+  // a folder card imports into that folder. Lumina never drags files out, so
+  // "Files" payloads always come from outside the app.
+  const externalDropTargetOf = (event: DragEvent<HTMLDivElement>): string | null => {
+    if (!isNativeLocation || !isElectron() || !event.dataTransfer.types.includes("Files")) {
+      return null;
+    }
+    const state = useLumina.getState();
+    const card = (event.target as HTMLElement).closest("[data-path]");
+    if (card) {
+      const target = state.files.find((f) => f.path === card.getAttribute("data-path"));
+      if (target?.isDirectory) return target.path;
+    }
+    // Search and tag-filter grids mix files from many folders; only folder
+    // cards name an unambiguous destination there.
+    const recursive = state.searchQuery.trim() !== "" || state.selectedTagFilterIds.size > 0;
+    return recursive ? null : state.currentPath || null;
+  };
+
+  const onGridDragOver = (event: DragEvent<HTMLDivElement>) => {
+    const destination = externalDropTargetOf(event);
+    if (destination === null) return;
+    event.preventDefault();
+    // Explorer-style modifier override; copy is the safe default so the
+    // cursor badge always matches what a drop will actually do.
+    event.dataTransfer.dropEffect = event.shiftKey ? "move" : "copy";
+    setExternalDropPath(destination);
+  };
+
+  const onGridDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      setExternalDropPath(null);
+    }
+  };
+
+  const onGridDrop = (event: DragEvent<HTMLDivElement>) => {
+    setExternalDropPath(null);
+    const destination = externalDropTargetOf(event);
+    if (destination === null) return;
+    event.preventDefault();
+    const move = event.shiftKey;
+    const sourcePaths = [...event.dataTransfer.files]
+      .map((file) => {
+        try {
+          return nativeApi().pathForFile(file);
+        } catch {
+          return "";
+        }
+      })
+      .filter((sourcePath) => sourcePath !== "");
+    if (sourcePaths.length === 0) return;
+    void (async () => {
+      const conflicts = await useLumina.getState().inspectExternalImport(sourcePaths, destination);
+      if (conflicts === null) return;
+      if (conflicts.length > 0) {
+        setPendingTransfer({
+          kind: "externalImport",
+          paths: sourcePaths,
+          destinationPath: destination,
+          move,
+          conflicts,
+          index: 0,
+          resolutions: {},
+        });
+        return;
+      }
+      await useLumina.getState().importExternalPaths(sourcePaths, destination, move);
+    })();
+  };
+
   if (!selectedLocationId) {
     return (
       <div className="explorer">
@@ -544,7 +632,7 @@ export function FileExplorer() {
 
       <div
         ref={gridRef}
-        className="file-grid"
+        className={`file-grid${externalDropPath !== null && externalDropPath === currentPath ? " is-external-drop" : ""}`}
         style={
           {
             // Explorer-style distribution: tracks flex to share leftover row
@@ -560,12 +648,16 @@ export function FileExplorer() {
         role="grid"
         onKeyDown={onGridKeyDown}
         onPointerDown={onGridPointerDown}
+        onDragOver={onGridDragOver}
+        onDragLeave={onGridDragLeave}
+        onDrop={onGridDrop}
       >
         {files.map((file) => (
           <FileCard
             key={file.path}
             file={file}
             isCut={cutPaths.has(file.path)}
+            isExternalDropTarget={externalDropPath === file.path}
             onRenameComplete={restoreGridFocus}
             onRequestDelete={() => requestDelete(false)}
           />
@@ -593,7 +685,7 @@ export function FileExplorer() {
       {confirmDelete && (
         <ConfirmDialog
           title={t("Delete")}
-          message={t(!permanentDelete && trashDelete ? "DeleteConfirmTrash" : "DeleteConfirm", selectedCount)}
+          message={t(!permanentDelete && isNativeLocation ? "DeleteConfirmTrash" : "DeleteConfirm", selectedCount)}
           confirmLabel={t("Delete")}
           cancelLabel={t("Cancel")}
           danger
@@ -1051,11 +1143,14 @@ function Breadcrumbs() {
 function FileCard({
   file,
   isCut,
+  isExternalDropTarget,
   onRenameComplete,
   onRequestDelete,
 }: {
   file: FileItem;
   isCut: boolean;
+  /** True while a Windows Explorer drag hovers this folder card. */
+  isExternalDropTarget: boolean;
   onRenameComplete(): void;
   onRequestDelete(): void;
 }) {
@@ -1175,7 +1270,7 @@ function FileCard({
         isCut ? "is-cut" : "",
         selected ? "is-selected" : "",
         focused ? "is-focused" : "",
-        dropIndex !== null ? "is-drop-target" : "",
+        dropIndex !== null || isExternalDropTarget ? "is-drop-target" : "",
       ]
         .filter(Boolean)
         .join(" ")}

@@ -1129,6 +1129,13 @@ select.lg-input option {
   position: relative;
 }
 
+/* Windows Explorer drag hovering the folder being viewed. */
+.file-grid.is-external-drop {
+  outline: 2px dashed color-mix(in srgb, var(--lg-accent) 55%, transparent);
+  outline-offset: -5px;
+  background: color-mix(in srgb, var(--lg-accent) 7%, transparent);
+}
+
 .explorer-empty {
   grid-column: 1 / -1;
   display: flex;

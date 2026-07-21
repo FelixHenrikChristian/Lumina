@@ -9,10 +9,11 @@ import {
   type FileClipboardState,
   type FileTransferConflict,
   type SystemClipboardPasteResult,
+  type SystemImportResult,
   type SystemPasteInspection,
   type TransferConflictResolutions,
 } from "./types";
-import { nativeApi, type NativeEntry, type NativePasteEntryInfo } from "./electronApi";
+import { nativeApi, type NativeEntry, type NativePasteEntryInfo, type NativePasteItem } from "./electronApi";
 
 function makeItem(entry: NativeEntry, virtualPath: string, relativePath: string): FileItem {
   const displayName = getDisplayName(entry.name);
@@ -138,8 +139,8 @@ export class ElectronFileBrowser implements FileBrowserService {
     await nativeApi().writeFileClipboard(paths.map((path) => this.toNative(path)), move);
   }
 
-  async inspectPasteFileClipboard(destinationPath: string): Promise<SystemPasteInspection> {
-    const inspection = await nativeApi().inspectPasteFileClipboard(this.toNative(destinationPath));
+  /** Maps main-process inspection items onto renderer conflict cards. */
+  private conflictsFromInspection(items: NativePasteItem[]): FileTransferConflict[] {
     const toItem = (info: NativePasteEntryInfo, nativePath: string): FileItem =>
       makeItem(
         {
@@ -155,17 +156,22 @@ export class ElectronFileBrowser implements FileBrowserService {
         this.fromNative(nativePath) ?? nativePath,
         "",
       );
+    return items
+      .filter((item) => item.conflict !== null)
+      .map((item): FileTransferConflict => ({
+        sourcePath: item.path,
+        source: toItem(item, item.path),
+        destination: item.conflict ? toItem(item.conflict, item.conflict.path) : null,
+        sameDirectory: false,
+      }));
+  }
+
+  async inspectPasteFileClipboard(destinationPath: string): Promise<SystemPasteInspection> {
+    const inspection = await nativeApi().inspectPasteFileClipboard(this.toNative(destinationPath));
     return {
       hasFiles: inspection.hasFiles,
       move: inspection.move,
-      conflicts: inspection.items
-        .filter((item) => item.conflict !== null)
-        .map((item): FileTransferConflict => ({
-          sourcePath: item.path,
-          source: toItem(item, item.path),
-          destination: item.conflict ? toItem(item.conflict, item.conflict.path) : null,
-          sameDirectory: false,
-        })),
+      conflicts: this.conflictsFromInspection(inspection.items),
     };
   }
 
@@ -189,6 +195,28 @@ export class ElectronFileBrowser implements FileBrowserService {
       move: state.move,
       supported: true,
     };
+  }
+
+  async inspectExternalImport(
+    sourcePaths: string[],
+    destinationPath: string,
+  ): Promise<FileTransferConflict[]> {
+    const inspection = await nativeApi().inspectExternalImport(
+      sourcePaths,
+      this.toNative(destinationPath),
+    );
+    return this.conflictsFromInspection(inspection.items);
+  }
+
+  async importExternalPaths(
+    sourcePaths: string[],
+    destinationPath: string,
+    move: boolean,
+    resolutions: TransferConflictResolutions = {},
+  ): Promise<SystemImportResult> {
+    // Sources and resolution keys are OS paths already; only the destination
+    // needs mapping out of the virtual scheme.
+    return nativeApi().importExternalPaths(sourcePaths, this.toNative(destinationPath), move, resolutions);
   }
 
   async undoNativePaste(): Promise<boolean> {

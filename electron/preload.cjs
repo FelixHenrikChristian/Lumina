@@ -1,6 +1,6 @@
 // Exposes the filesystem bridge to the sandboxed renderer. Shapes mirror
 // the IPC handlers in main.cjs; src/fs/electronApi.d.ts is the typed view.
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("luminaNative", {
   chooseWallpaper: () => ipcRenderer.invoke("lumina:chooseWallpaper"),
@@ -34,6 +34,13 @@ contextBridge.exposeInMainWorld("luminaNative", {
   pasteFileClipboard: (destinationPath, resolutions) =>
     ipcRenderer.invoke("lumina:pasteFileClipboard", destinationPath, resolutions),
   readFileClipboard: () => ipcRenderer.invoke("lumina:readFileClipboard"),
+  // Drag-drop from Explorer: dropped File objects only reveal their OS path
+  // through webUtils, and the import runs outside the clipboard pipeline.
+  pathForFile: (file) => webUtils.getPathForFile(file),
+  inspectExternalImport: (sourcePaths, destinationPath) =>
+    ipcRenderer.invoke("lumina:inspectExternalImport", sourcePaths, destinationPath),
+  importExternalPaths: (sourcePaths, destinationPath, move, resolutions) =>
+    ipcRenderer.invoke("lumina:importExternalPaths", sourcePaths, destinationPath, move, resolutions),
   undoNativePaste: () => ipcRenderer.invoke("lumina:undoNativePaste"),
   redoNativePaste: () => ipcRenderer.invoke("lumina:redoNativePaste"),
   restoreDeleted: (paths) => ipcRenderer.invoke("lumina:restoreDeleted", paths),

@@ -1,7 +1,7 @@
 // Typed view of the API exposed by electron/preload.cjs. Present only when
 // the app runs inside Electron.
 import type { CustomWallpaper } from "../core/models";
-import type { FileClipboardState, SystemClipboardPasteResult } from "./types";
+import type { FileClipboardState, SystemClipboardPasteResult, SystemImportResult } from "./types";
 
 export interface NativeEntry {
   readonly name: string;
@@ -58,10 +58,13 @@ export interface NativePasteItem extends NativePasteEntryInfo {
   readonly conflict: (NativePasteEntryInfo & { readonly path: string }) | null;
 }
 
-export interface NativePasteInspection {
+export interface NativeImportInspection {
   readonly hasFiles: boolean;
-  readonly move: boolean;
   readonly items: NativePasteItem[];
+}
+
+export interface NativePasteInspection extends NativeImportInspection {
+  readonly move: boolean;
 }
 
 export interface LuminaNativeApi {
@@ -93,6 +96,18 @@ export interface LuminaNativeApi {
     resolutions?: Readonly<Record<string, string>>,
   ): Promise<SystemClipboardPasteResult>;
   readFileClipboard(): Promise<FileClipboardState>;
+  /** Resolves the OS path of a File dropped in from another app ("" if none). */
+  pathForFile(file: File): string;
+  inspectExternalImport(
+    sourcePaths: string[],
+    destinationPath: string,
+  ): Promise<NativeImportInspection>;
+  importExternalPaths(
+    sourcePaths: string[],
+    destinationPath: string,
+    move: boolean,
+    resolutions?: Readonly<Record<string, string>>,
+  ): Promise<SystemImportResult>;
   undoNativePaste(): Promise<{ handled: boolean }>;
   redoNativePaste(): Promise<{ handled: boolean }>;
   restoreDeleted(paths: string[]): Promise<void>;

@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = (relativePath: string) => readFileSync(join(root, relativePath), "utf8");
 const require = createRequire(import.meta.url);
-const { normalizeResolutions, planTransferBatches } = require(
+const { findRecursiveImportSource, normalizeResolutions, planTransferBatches } = require(
   join(root, "electron", "fileOperationPlanning.cjs"),
 );
 
@@ -65,6 +65,15 @@ test("planTransferBatches never auto-renames moves within the same folder", () =
   ]);
 });
 
+test("findRecursiveImportSource flags folders dropped into their own subtree", () => {
+  assert.equal(findRecursiveImportSource(["C:\\A\\B"], "C:\\a\\b"), "C:\\A\\B");
+  assert.equal(findRecursiveImportSource(["C:\\A"], "C:\\a\\b\\c"), "C:\\A");
+  assert.equal(findRecursiveImportSource(["C:\\other", "C:\\A"], "C:\\a\\sub"), "C:\\A");
+  // Sibling prefixes are not containment, and plain files never recurse.
+  assert.equal(findRecursiveImportSource(["C:\\A\\B"], "C:\\a\\bc"), null);
+  assert.equal(findRecursiveImportSource(["C:\\x\\y.txt"], "C:\\a"), null);
+});
+
 test("Shell-owned dialogs are suppressed on every native operation path", () => {
   const helper = read("electron/windows-shell/WindowsFileOperation.cs");
   const main = read("electron/main.cjs");
@@ -78,9 +87,13 @@ test("Shell-owned dialogs are suppressed on every native operation path", () => 
   // Deletes confirm in Lumina's dialog, so the Shell must not ask again.
   assert.match(main, /"lumina:trash"[\s\S]*?noConfirmation: true/);
   assert.match(main, /"lumina:deletePermanently"[\s\S]*?permanent: true,\s*noConfirmation: true/);
-  // Transfers/pastes resolve conflicts in Lumina's dialog first.
+  // Transfers/pastes resolve conflicts in Lumina's dialog first. Pastes and
+  // Explorer-drop imports share runNativeImport, the one place that
+  // suppresses Shell prompts for both.
   assert.match(main, /"lumina:transfer"[\s\S]*?noConfirmation: true/);
-  assert.match(main, /"lumina:pasteFileClipboard"[\s\S]*?noConfirmation: true/);
+  assert.match(main, /runNativeImport\(event, sources, destination, move, resolutions\) \{[\s\S]*?noConfirmation: true/);
+  assert.match(main, /"lumina:pasteFileClipboard"[\s\S]*?runNativeImport/);
+  assert.match(main, /"lumina:importExternalPaths"[\s\S]*?runNativeImport/);
 });
 
 test("progress and cancellation are bridged into the themed dialog", () => {
@@ -114,6 +127,28 @@ test("native pastes inspect conflicts before running", () => {
   assert.match(main, /lumina:inspectPasteFileClipboard/);
   assert.match(explorer, /inspectSystemClipboardPaste/);
   assert.match(explorer, /kind: "systemPaste"/);
+});
+
+test("Explorer drag-drop imports ride the shared conflict-first pipeline", () => {
+  const main = read("electron/main.cjs");
+  const preload = read("electron/preload.cjs");
+  const explorer = read("src/components/FileExplorer.tsx");
+  const app = read("src/App.tsx");
+
+  // Dropped File objects only reveal their OS path through webUtils.
+  assert.match(preload, /webUtils/);
+  assert.match(preload, /pathForFile/);
+  assert.match(preload, /inspectExternalImport/);
+  assert.match(preload, /importExternalPaths/);
+  // The import handler validates sources and refuses recursive drops.
+  assert.match(main, /"lumina:inspectExternalImport"/);
+  assert.match(main, /"lumina:importExternalPaths"[\s\S]*?findRecursiveImportSource/);
+  // Drops resolve conflicts in Lumina's dialog before the Shell runs.
+  assert.match(explorer, /dataTransfer\.types\.includes\("Files"\)/);
+  assert.match(explorer, /kind: "externalImport"/);
+  assert.match(explorer, /importExternalPaths/);
+  // A stray drop anywhere else must never navigate the window to the file.
+  assert.match(app, /dropEffect = "none"/);
 });
 
 test("conflict and progress strings are localized in both languages", () => {

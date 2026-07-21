@@ -19,8 +19,9 @@ test("same-directory reloads keep the file list mounted so scroll survives", () 
 test("refresh and post-operation reloads opt into keeping files", () => {
   const keepers = store.match(/loadInto\(get\(\)\.currentPath, \{ keepFiles: true \}\)/g) ?? [];
   // reloadAndSelect (rename/tag drop/transfer), refresh (F5 + watcher),
-  // deleteSelected, pasteSystemClipboard, undo, redo.
-  assert.equal(keepers.length, 6);
+  // deleteSelected, pasteSystemClipboard, importExternalPaths (Explorer
+  // drop onto a folder card), undo, redo.
+  assert.equal(keepers.length, 7);
 });
 
 test("navigation still clears the grid so stale entries never flash", () => {

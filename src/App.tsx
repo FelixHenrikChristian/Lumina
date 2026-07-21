@@ -61,6 +61,26 @@ export default function App() {
     };
   }, []);
 
+  // Chromium navigates to any file dropped where the app didn't claim the
+  // drag. The explorer grid marks its drop zones with preventDefault; every
+  // other surface must refuse OS drags outright.
+  useEffect(() => {
+    const onDragOver = (event: DragEvent) => {
+      if (event.defaultPrevented) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "none";
+    };
+    const onDrop = (event: DragEvent) => {
+      if (!event.defaultPrevented) event.preventDefault();
+    };
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, []);
+
   // Ctrl+B mirrors the seam handle button.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
