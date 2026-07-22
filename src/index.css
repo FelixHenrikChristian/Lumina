@@ -80,7 +80,12 @@ body {
 
 /* Structural glass panel: used for sidebars, explorer chrome, dialogs.
    backdrop-filter carries the frost; the SVG filter (defined in App)
-   adds edge refraction on browsers that support it. */
+   adds edge refraction on browsers that support it.
+   No -webkit-backdrop-filter fallbacks anywhere: Chromium has no such
+   alias, and the CSS minifier collapses a standard+prefixed pair into
+   whichever declaration comes last — shipping the prefixed one strips
+   the frost from every packaged build while dev (unminified) still
+   looks right. */
 .lg-panel {
   position: relative;
   border-radius: var(--lg-radius-lg);
@@ -90,7 +95,6 @@ body {
     var(--lg-glass-tint) 45%
   );
   backdrop-filter: blur(22px) saturate(160%);
-  -webkit-backdrop-filter: blur(22px) saturate(160%);
   border: 1px solid var(--lg-stroke);
   box-shadow:
     var(--lg-shadow),
@@ -118,7 +122,6 @@ body {
   border-radius: 999px;
   background: var(--lg-glass-tint);
   backdrop-filter: blur(10px) saturate(150%);
-  -webkit-backdrop-filter: blur(10px) saturate(150%);
   color: var(--lg-text);
   padding: 4px 12px;
   font-size: 12px;
@@ -156,7 +159,6 @@ body {
   border-radius: var(--lg-radius-sm);
   background: var(--lg-glass-tint);
   backdrop-filter: blur(10px) saturate(150%);
-  -webkit-backdrop-filter: blur(10px) saturate(150%);
   color: var(--lg-text);
   padding: 8px 14px;
   font-size: 13px;
@@ -824,7 +826,6 @@ select.lg-input option {
   z-index: 70;
   background: rgba(4, 8, 20, 0.45);
   backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
 }
 
 /* liquid-glass-react's official preview leaves its Tailwind-only dark tint
@@ -1214,7 +1215,6 @@ select.lg-input option {
   border: 1px solid var(--lg-stroke);
   background: var(--lg-glass-tint);
   backdrop-filter: blur(14px) saturate(150%);
-  -webkit-backdrop-filter: blur(14px) saturate(150%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 4px 16px rgba(0, 0, 0, 0.18);
   overflow: hidden;
   cursor: default;
