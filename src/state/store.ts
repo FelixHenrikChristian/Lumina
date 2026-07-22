@@ -799,7 +799,14 @@ export const useLumina = create<LuminaState>((set, get) => {
               undoAvailable: Boolean(result.undoRecorded),
             });
           }
-          await loadInto(get().currentPath, { keepFiles: true });
+          // Explorer-style: reveal what just arrived — select the pasted
+          // entries and let the grid scroll the focused one into view.
+          const destination = get().currentPath;
+          if (result.names?.length) {
+            await reloadAndSelect(result.names.map((name) => joinPath(destination, name)));
+          } else {
+            await loadInto(destination, { keepFiles: true });
+          }
         }
         return result;
       } catch (error) {
@@ -838,8 +845,10 @@ export const useLumina = create<LuminaState>((set, get) => {
           // Ctrl+Z rides the same rails as a native paste.
           recordHistory({ kind: "nativePaste", locationId, undoAvailable: Boolean(result.undoRecorded) });
         }
-        if (isSamePath(destinationPath, get().currentPath)) {
-          await reloadAndSelect(sourcePaths.map((p) => joinPath(destinationPath, nativeBaseName(p))));
+        if (isSamePath(destinationPath, get().currentPath) && result.names?.length) {
+          // Explorer-style: select what just arrived (auto-renamed copies
+          // included) and let the grid scroll the focused entry into view.
+          await reloadAndSelect(result.names.map((name) => joinPath(destinationPath, name)));
         } else {
           // Dropped onto a folder card: the visible listing is unchanged
           // except for watchers, so just refresh in place.
@@ -1011,13 +1020,6 @@ export const useLumina = create<LuminaState>((set, get) => {
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-/** Basename of an OS path (either separator); virtual paths use baseNameOf. */
-function nativeBaseName(nativePath: string): string {
-  const trimmed = nativePath.replace(/[\\/]+$/, "");
-  const index = Math.max(trimmed.lastIndexOf("\\"), trimmed.lastIndexOf("/"));
-  return index < 0 ? trimmed : trimmed.slice(index + 1);
 }
 
 /** Translation hook bound to the current language. */

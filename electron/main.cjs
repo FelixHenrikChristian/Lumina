@@ -535,14 +535,23 @@ async function runNativeImport(event, sources, destination, move, resolutions) {
     noConfirmation: true,
   });
   let undoRecorded = false;
+  let names = [];
   if (!aborted) {
     const history = await buildNativePasteHistory(sources, destination, move, namesBefore);
     if (history) {
       recordNativePasteHistory(history);
       undoRecorded = true;
     }
+    // Names the operation produced in the destination, Explorer-style: new
+    // entries (covers "- Copy"/"(2)" auto-renames) plus replaced items that
+    // kept a source's name. The renderer selects and reveals them.
+    const before = new Set(namesBefore.map((name) => name.toLowerCase()));
+    const sourceNames = new Set(sources.map((source) => path.basename(source).toLowerCase()));
+    names = (await directoryNames(destination)).filter(
+      (name) => !before.has(name.toLowerCase()) || sourceNames.has(name.toLowerCase()),
+    );
   }
-  return { aborted, undoRecorded };
+  return { aborted, undoRecorded, names };
 }
 
 // Explorer drag-drop hands the renderer paths outside the registered roots by
@@ -942,7 +951,7 @@ function registerIpc() {
       .map(canonical)
       .filter((source) => clean[source.toLowerCase()] !== "skip");
     if (sources.length === 0) return { pasted: false };
-    const { aborted, undoRecorded } = await runNativeImport(event, sources, destination, move, clean);
+    const { aborted, undoRecorded, names } = await runNativeImport(event, sources, destination, move, clean);
     if (!aborted) {
       try {
         await markWindowsClipboardPasteSucceeded(move);
@@ -950,7 +959,7 @@ function registerIpc() {
         console.warn("Could not publish the completed paste effect to the Windows clipboard:", error);
       }
     }
-    return { pasted: !aborted, undoRecorded };
+    return { pasted: !aborted, undoRecorded, names };
   });
 
   // Phase 1 of an Explorer drag-drop: same conflict inspection as a paste,
@@ -971,8 +980,8 @@ function registerIpc() {
     if (findRecursiveImportSource(sources, destination)) {
       throw new Error("The destination folder is a subfolder of the source folder.");
     }
-    const { aborted, undoRecorded } = await runNativeImport(event, sources, destination, move, clean);
-    return { imported: !aborted, undoRecorded };
+    const { aborted, undoRecorded, names } = await runNativeImport(event, sources, destination, move, clean);
+    return { imported: !aborted, undoRecorded, names };
   });
 
   ipcMain.handle("lumina:undoNativePaste", async (event) => {

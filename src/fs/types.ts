@@ -18,11 +18,15 @@ export interface SystemClipboardPasteResult {
   readonly pasted: boolean;
   readonly supported?: boolean;
   readonly undoRecorded?: boolean;
+  /** Entry names the paste produced in the destination (incl. auto-renames). */
+  readonly names?: string[];
 }
 /** Outcome of importing OS paths dropped in from another app. */
 export interface SystemImportResult {
   readonly imported: boolean;
   readonly undoRecorded?: boolean;
+  /** Entry names the import produced in the destination (incl. auto-renames). */
+  readonly names?: string[];
 }
 export interface FileClipboardState {
   readonly paths: string[];

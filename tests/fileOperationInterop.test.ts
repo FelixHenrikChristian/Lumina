@@ -151,6 +151,16 @@ test("Explorer drag-drop imports ride the shared conflict-first pipeline", () =>
   assert.match(app, /dropEffect = "none"/);
 });
 
+test("pastes and imports reveal the resulting entries Explorer-style", () => {
+  const main = read("electron/main.cjs");
+  const store = read("src/state/store.ts");
+  // The main process reports the names an operation produced (including
+  // "- Copy"-style auto-renames) so the renderer can select and reveal them.
+  assert.match(main, /return \{ aborted, undoRecorded, names \};/);
+  assert.equal(store.split("result.names?.length").length - 1, 2, "paste and import both reveal");
+  assert.match(store, /reloadAndSelect\(result\.names\.map/);
+});
+
 test("conflict and progress strings are localized in both languages", () => {
   const source = read("src/core/localization.ts");
   for (const key of [
