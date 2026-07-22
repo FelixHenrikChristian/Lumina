@@ -6,6 +6,29 @@ All notable changes to Lumina are documented in this file. The format is based o
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-07-22
+
+### Added
+
+- Drag-and-drop import from File Explorer into Lumina: drop on the grid
+  background to import into the current folder, or onto a folder card to import
+  into that folder. Copy is the default; hold Shift to move. Conflicts use the
+  themed dialog, and clean imports can be undone with Ctrl+Z.
+- After paste and drag-and-drop import, newly created items are selected and
+  scrolled into view, matching File Explorer behavior (including auto-renamed
+  "- Copy" names).
+
+### Fixed
+
+- Same-directory reloads (tag drag-and-drop, rename, delete, undo/redo, and
+  directory-watcher refresh) no longer clear the file list, so the grid keeps
+  its scroll position; the focused card is revealed with minimal scrolling if it
+  left the viewport.
+- Packaged builds restore frosted glass on context menus, sort menus, and tag
+  filter panels. CSS minification was dropping the standard `backdrop-filter`
+  property when a hand-written `-webkit-` prefix was present, leaving only a
+  prefix Chromium ignores.
+
 ## [1.2.0] - 2026-07-19
 
 ### Added
@@ -76,7 +99,8 @@ All notable changes to Lumina are documented in this file. The format is based o
 - Updates are downloaded manually from GitHub Releases; automatic updates are not
   included.
 
-[Unreleased]: https://github.com/FelixHenrikChristian/Lumina/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/FelixHenrikChristian/Lumina/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/FelixHenrikChristian/Lumina/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/FelixHenrikChristian/Lumina/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/FelixHenrikChristian/Lumina/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/FelixHenrikChristian/Lumina/releases/tag/v1.0.0
